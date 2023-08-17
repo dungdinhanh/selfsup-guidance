@@ -80,6 +80,12 @@ def main(local_rank):
                 "No latest checkpoint found - train from scratch"
             )
             load_last_checkpoint = False
+
+            if args.pretrained_cls:
+                logger.log(
+                    f"loading pretrained classifier mode: {args.pretrained_cls}..."
+                )
+                model.load_state_dict(dist_util.load_state_dict(args.pretrained_cls), strict=False)
         else:
             load_last_checkpoint = True
             logger.log(
@@ -308,6 +314,7 @@ def create_argparser():
         microbatch=-1,
         schedule_sampler="uniform",
         resume_checkpoint="",
+        pretrained_cls="",
         log_interval=500,
         eval_interval=5,
         save_interval=25000,
