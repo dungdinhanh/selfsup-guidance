@@ -13,4 +13,5 @@ runs_ofs/
 glide_model_cache
 eval_models/
 ssguided_diffusion.egg-info
+ss_models/
 
