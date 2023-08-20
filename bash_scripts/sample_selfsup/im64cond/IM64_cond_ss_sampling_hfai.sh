@@ -35,7 +35,7 @@ done
 for scale in "${scales[@]}"
 do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet64_labeled.npz \
- runs/sampling_ss/IMN64/unconditional/scale${scale}/reference/samples_50000x64x64x3.npz"
+ runs/sampling_ss/IMN64/conditional/scale${scale}/reference/samples_50000x64x64x3.npz"
 echo ${cmd}
 eval ${cmd}
 done
