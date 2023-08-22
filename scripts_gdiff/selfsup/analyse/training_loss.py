@@ -6,6 +6,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--filename", type=str, default="training_scratch")
+parser.add_argument("--logpath", type=str, default="runs/selfsup_training/scratch/logs/progress.csv")
 
 
 def read_csv_log(log_file: str):
@@ -32,5 +33,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
     folder = "runs/visualize_training_ss/"
     os.makedirs(folder, exist_ok=True)
-    df_reader = read_csv_log("runs/selfsup_training/scratch/logs/progress.csv")
+    df_reader = read_csv_log(args.logpath)
     visualize_loss(df_reader, folder, args.filename)
