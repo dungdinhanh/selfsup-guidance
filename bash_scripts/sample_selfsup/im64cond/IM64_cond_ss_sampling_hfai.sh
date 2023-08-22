@@ -27,7 +27,7 @@ for scale in "${scales[@]}"
 do
 cmd="python scripts_gdiff/selfsup/classifier_sample_ss.py $MODEL_FLAGS --classifier_scale ${scale}  \
 --classifier_path ss_models/scratch_ss_cls.pt --model_path models/64x64_diffusion.pt $SAMPLE_FLAGS \
- --logdir runs/sampling_ss/IMN64/unconditional/scale${scale}/ --classifier_depth 4"
+ --logdir runs/sampling_ss/IMN64/conditional/scale${scale}/ --classifier_depth 4"
 echo ${cmd}
 eval ${cmd}
 done
