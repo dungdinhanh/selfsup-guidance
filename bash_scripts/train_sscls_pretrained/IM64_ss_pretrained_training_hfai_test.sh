@@ -1,7 +1,7 @@
 #!/bin/bash
 
 export NCCL_P2P_DISABLE=1
-iter="150000"
+iter="5"
 
 TRAIN_FLAGS="--iterations ${iter} --anneal_lr True --batch_size 60 --lr 6e-4 --save_interval 10000 --weight_decay 0.2 \
 --pretrained_cls models/64x64_classifier.pt"

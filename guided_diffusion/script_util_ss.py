@@ -181,6 +181,10 @@ class EncoderUnetSSModel(EncoderUNetModel):
                                        nn.ReLU(inplace=True),
                                        nn.Linear(pred_dim, dim))
 
+        self.pred_prev = None
+        self.z_prev = None
+        self.release_z_grad = False
+
     def forward(self, x, timesteps, y=None):
         """
         Apply the model to an input batch.
@@ -208,7 +212,10 @@ class EncoderUnetSSModel(EncoderUNetModel):
         # return self.out(h)
         z = self.out(h)
         p = self.predictor(z)
-        return p, z.detach()
+        if not self.release_z_grad:
+            return p, z.detach()
+        else:
+            return p, z
 
 
 class EncoderUnetSSModelDirection(EncoderUNetModel):
