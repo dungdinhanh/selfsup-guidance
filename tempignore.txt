@@ -1,39 +1,3 @@
-# ide generated config
-.vscode
-.idea
-# git
-.git
-.gitignore
-.gitattributes
-# python generated
-__pycache__
-*.py[cod]
-*$py.class
-# python package
-eggs/
-".eggs/"
-*.egg-info/
-*.egg
-wheels/
-share/python-wheels/
-# runs/
-runs_nips/
-runs_ofs/
-runs/IM64
-data/
-build/
-dist/
-bash_scripts_local/
-bash_scripts2/
-runs/sampling/
-runs/sampling2/
-runs/
-runs_robust/
-runs/icml/cls_models/cifar10/models/
-ssguided_diffusion.egg-info/
-
-# For the model/ remember to comment when needs pushing new model
-
 models/64x64_classifier.pt
 models/64x64_diffusion.pt
 models/cifar10_uncond_vlb_50M_500K.pt
