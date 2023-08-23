@@ -316,7 +316,7 @@ def create_argparser():
         schedule_sampler="uniform-2-steps",
         resume_checkpoint="",
         pretrained_cls="",
-        log_interval=500,
+        log_interval=100,
         eval_interval=5,
         save_interval=25000,
         logdir="runs",

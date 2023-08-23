@@ -100,7 +100,7 @@ class UniformSampler2steps(ScheduleSampler):
         indices_np = np.random.choice(len(p), size=(batch_size,), p=p)
         indx_distance = np.random.choice(self.distance, size=(batch_size,))
         indices_np2 = indices_np + indx_distance
-        np.clip(indices_np2, 0, len(p) - 1)
+        indices_np2 = np.clip(indices_np2, 0, len(p) - 1)
         indices1 = th.from_numpy(indices_np).long().to(device)
         indices2 = th.from_numpy(indices_np2).long().to(device)
         weights_np = 1 / (len(p) * p[indices_np])
