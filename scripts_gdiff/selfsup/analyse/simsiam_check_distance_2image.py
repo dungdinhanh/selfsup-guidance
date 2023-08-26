@@ -19,13 +19,14 @@ from torch.optim import AdamW
 
 from guided_diffusion import dist_util, logger
 from guided_diffusion.fp16_util import MixedPrecisionTrainer
-from guided_diffusion.image_datasets import load_data_imagenet_hfai
-from scripts_gdiff.selfsup.analyse.resample_ss import create_named_schedule_sampler
+from scripts_gdiff.selfsup.support.image_datasets import load_data_imagenet_hfai_aug
+from scripts_gdiff.selfsup.support.resample_ss import create_named_schedule_sampler_ext
 from scripts_gdiff.selfsup.support.script_util_ss import (
     add_dict_to_argparser,
     args_to_dict,
     classifier_and_diffusion_defaults,
-    create_ssclassifier_and_diffusion,
+    simsiam_and_diffusion_defaults,
+    create_simsiam_and_diffusion,
 )
 from guided_diffusion.train_util import parse_resume_step_from_filename, log_loss_dict
 import hfai.client
@@ -47,15 +48,15 @@ def main(local_rank):
         logger.configure(rank=dist.get_rank())
     logger.log("creating model and diffusion...")
 
-    model, diffusion = create_ssclassifier_and_diffusion(
-        **args_to_dict(args, classifier_and_diffusion_defaults().keys())
+    model, diffusion = create_simsiam_and_diffusion(
+        **args_to_dict(args, simsiam_and_diffusion_defaults().keys())
     )
     model.to(dist_util.dev())
     if args.noised:
-        schedule_sampler = create_named_schedule_sampler(
+        schedule_sampler = create_named_schedule_sampler_ext(
             args.schedule_sampler, diffusion
         )
-        schedule_sampler.range = [args.min, args.max]
+        # schedule_sampler.range = [args.min, args.max]
 
     resume_step = 0
 
@@ -77,7 +78,7 @@ def main(local_rank):
     dist_util.sync_params(model.parameters())
 
     mp_trainer = MixedPrecisionTrainer(
-        model=model, use_fp16=args.classifier_use_fp16, initial_lg_loss_scale=16.0
+        model=model, use_fp16=False, initial_lg_loss_scale=16.0
     )
 
     model = DDP(
@@ -97,36 +98,37 @@ def main(local_rank):
     #     class_cond=True,
     #     random_crop=True,
     # )
-    data = load_data_imagenet_hfai(train=True, image_size=args.image_size,
+    data = load_data_imagenet_hfai_aug(train=True, image_size=args.image_size,
                                    batch_size=args.batch_size, random_crop=True)
 
 
     logger.log("training classifier model...")
 
     def forward_backward_log(data_loader, prefix="train"):
-        batch, extra = next(data_loader)
+        batch1, _ = next(data_loader)
+        batch2, _ = next(data_loader)
         # labels = extra["y"].to(dist_util.dev())
 
-        batch = batch.to(dist_util.dev())
+        batch1 = batch1.to(dist_util.dev())
+        batch2 = batch2.to(dist_util.dev())
         # Noisy images
         if args.noised:
-            t1, _ = schedule_sampler.sample(batch.shape[0], dist_util.dev())
-            batch1 = diffusion.q_sample(batch, t1)
-            t2, _ = schedule_sampler.sample(batch.shape[0], dist_util.dev())
-            batch2 = diffusion.q_sample(batch, t2)
+            t1, t2, _ = schedule_sampler.sample(batch1.shape[0], dist_util.dev())
+            batch1 = diffusion.q_sample(batch1, t1)
+            batch2 = diffusion.q_sample(batch2, t2)
         else:
             t1 = th.zeros(batch.shape[0], dtype=th.long, device=dist_util.dev())
             t2 = t1
-            batch1 = batch
-            batch2 = batch1
+            batch1 = batch1
+            batch2 = batch2
 
         for i, (sub_batch1, sub_batch2, sub_t1, sub_t2) in enumerate(
             split_microbatches(args.microbatch, batch1, batch2, t1, t2)
         ):
-            p1, z1 = model(sub_batch1, timesteps=sub_t1)
-            # loss = F.cross_entropy(logits, sub_labels, reduction="none")
-            p2, z2 = model(sub_batch2, timesteps=sub_t2)
-
+            # p1, z1 = model(sub_batch1, timesteps=sub_t1)
+            # # loss = F.cross_entropy(logits, sub_labels, reduction="none")
+            # p2, z2 = model(sub_batch2, timesteps=sub_t2)
+            p1, p2, z1, z2 = model(sub_batch1, sub_batch2)
             loss1 = similarity_loss(p1, z2, False)
             loss2 = similarity_loss(p2, z1, False)
 
@@ -142,11 +144,11 @@ def main(local_rank):
             loss = 0.5 * (loss1.mean() + loss2.mean())
             print(f"{sub_t1[0]} || {sub_t2[0]} || {loss}")
     data_iter = iter(data)
-    for step in range(args.iterations - resume_step):
-        logger.logkv("step", step + resume_step)
+    for step in range(args.iterations - 0):
+        logger.logkv("step", step + 0)
         logger.logkv(
             "samples",
-            (step + resume_step + 1) * args.batch_size * dist.get_world_size(),
+            (step + 0 + 1) * args.batch_size * dist.get_world_size(),
         )
         forward_backward_log(data_iter)
 
@@ -215,7 +217,7 @@ def create_argparser():
         anneal_lr=False,
         batch_size=4,
         microbatch=-1,
-        schedule_sampler="uniform",
+        schedule_sampler="uniform-2-steps",
         resume_checkpoint="",
         pretrained_cls="",
         log_interval=500,
@@ -225,7 +227,7 @@ def create_argparser():
         min=0,
         max=100
     )
-    defaults.update(classifier_and_diffusion_defaults())
+    defaults.update(simsiam_and_diffusion_defaults())
     parser = argparse.ArgumentParser()
     add_dict_to_argparser(parser, defaults)
     return parser

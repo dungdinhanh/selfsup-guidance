@@ -1,8 +1,10 @@
 from guided_diffusion.script_util import *
 import torch.nn as nn
-from .unet import timestep_embedding
-import torchvision.models
+from guided_diffusion.unet import timestep_embedding
+import torchvision.models as tmodels
 import torch as th
+import math
+from evaluations.imagenet_evaluator_models.models_imp import *
 
 
 def create_classifier_selfsup(
@@ -212,10 +214,7 @@ class EncoderUnetSSModel(EncoderUNetModel):
         # return self.out(h)
         z = self.out(h)
         p = self.predictor(z)
-        if not self.release_z_grad:
-            return p, z.detach()
-        else:
-            return p, z
+        return p, z
 
 
 class EncoderUnetSSModelDirection(EncoderUNetModel):
@@ -453,3 +452,115 @@ def create_ssclassifier_and_diffusion_direction(
 
 
 
+class SimSiam(nn.Module):
+    """
+    Build a SimSiam model.
+    """
+    def __init__(self, base_encoder, dim=2048, pred_dim=512, load_backbone=True):
+        """
+        dim: feature dimension (default: 2048)
+        pred_dim: hidden dimension of the predictor (default: 512)
+        """
+        super(SimSiam, self).__init__()
+
+        # create the encoder
+        # num_classes is the output fc dimension, zero-initialize last BNs
+        self.encoder = base_encoder(num_classes=1000, pretrained=load_backbone)
+
+        self.encoder.fc  = nn.Linear(2048, 2048)
+        # build a 3-layer projector
+        prev_dim = self.encoder.fc.weight.shape[1]
+        self.encoder.fc = nn.Sequential(nn.Linear(prev_dim, prev_dim, bias=False),
+                                        nn.BatchNorm1d(prev_dim),
+                                        nn.ReLU(inplace=True), # first layer
+                                        nn.Linear(prev_dim, prev_dim, bias=False),
+                                        nn.BatchNorm1d(prev_dim),
+                                        nn.ReLU(inplace=True), # second layer
+                                        self.encoder.fc,
+                                        nn.BatchNorm1d(dim, affine=False)) # output layer
+        self.encoder.fc[6].bias.requires_grad = False # hack: not use bias as it is followed by BN
+
+        # build a 2-layer predictor
+        self.predictor = nn.Sequential(nn.Linear(dim, pred_dim, bias=False),
+                                        nn.BatchNorm1d(pred_dim),
+                                        nn.ReLU(inplace=True), # hidden layer
+                                        nn.Linear(pred_dim, dim)) # output layer
+
+    def forward(self, x1, x2):
+        """
+        Input:
+            x1: first views of images
+            x2: second views of images
+        Output:
+            p1, p2, z1, z2: predictors and targets of the network
+            See Sec. 3 of https://arxiv.org/abs/2011.10566 for detailed notations
+        """
+
+        # compute features for one view
+        z1 = self.encoder(x1) # NxC
+        z2 = self.encoder(x2) # NxC
+
+        p1 = self.predictor(z1) # NxC
+        p2 = self.predictor(z2) # NxC
+
+        return p1, p2, z1.detach(), z2.detach()
+
+def create_simsiam_selfsup(dim, pred_dim, image_size, load_backbone=True):
+    # base_model = tmodels.__dict__['resnet50']
+    base_model = resnet50
+    model = SimSiam(base_model, dim, pred_dim, load_backbone=load_backbone)
+
+    if image_size == 64 or image_size == 128:
+        # Change first layer
+        conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=1, padding=3, bias=False)
+        n = conv1.kernel_size[0] * conv1.kernel_size[1] * conv1.out_channels
+        conv1.weight.data.normal_(0, math.sqrt(2. / n))
+        model.encoder.conv1 = conv1
+
+    return model
+    pass
+
+
+
+def simsiam_defaults():
+    """
+    Defaults for classifier models.
+    """
+    return dict(
+        image_size=64,
+        dim=2048,
+        pred_dim=512
+    )
+
+def simsiam_and_diffusion_defaults():
+    res = simsiam_defaults()
+    res.update(diffusion_defaults())
+    return res
+
+
+def create_simsiam_and_diffusion(
+    image_size,
+    learn_sigma,
+    diffusion_steps,
+    noise_schedule,
+    timestep_respacing,
+    use_kl,
+    predict_xstart,
+    rescale_timesteps,
+    rescale_learned_sigmas,
+    pred_dim=512,
+    dim=2048,
+):
+    simsiam = create_simsiam_selfsup(dim, pred_dim, image_size)
+
+    diffusion = create_gaussian_diffusion(
+        steps=diffusion_steps,
+        learn_sigma=learn_sigma,
+        noise_schedule=noise_schedule,
+        use_kl=use_kl,
+        predict_xstart=predict_xstart,
+        rescale_timesteps=rescale_timesteps,
+        rescale_learned_sigmas=rescale_learned_sigmas,
+        timestep_respacing=timestep_respacing,
+    )
+    return simsiam, diffusion

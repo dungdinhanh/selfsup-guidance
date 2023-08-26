@@ -14,7 +14,7 @@ import hfai.nccl.distributed as dist
 import torch.nn.functional as F
 import hfai
 from guided_diffusion import dist_util, logger
-from guided_diffusion.script_util_ss import (
+from scripts_gdiff.selfsup.support.script_util_ss import (
     NUM_CLASSES,
     model_and_diffusion_defaults,
     classifier_defaults,
@@ -102,6 +102,8 @@ def main(local_rank):
             loss1 = similarity_loss(classifier.pred_prev, z_x_in)
             loss2 = similarity_loss(p_x_in, classifier.z_prev)
             loss = (loss1 + loss2) * 1/2
+            classifier.pred_prev = p_x_in.detach()
+            classifier.z_prev = z_x_in.detach()
             return th.autograd.grad(loss, x_in)[0] * args.classifier_scale
 
     def model_fn(x, t, y=None):

@@ -1,5 +1,5 @@
 """
-Train a noised image classifier on ImageNet.
+Train a noised image self-supervised classifier on ImageNet.
 """
 # import hfai_env
 # hfai_env.set_env('dbg')
@@ -19,18 +19,17 @@ from torch.optim import AdamW
 
 from guided_diffusion import dist_util, logger
 from guided_diffusion.fp16_util import MixedPrecisionTrainer
-from guided_diffusion.image_datasets import load_dataset_CIFAR10
-from guided_diffusion.resample import create_named_schedule_sampler
+from scripts_gdiff.selfsup.support.image_datasets import load_data_imagenet_hfai
+from scripts_gdiff.selfsup.support.resample_ss import create_named_schedule_sampler_ext
 from scripts_gdiff.selfsup.support.script_util_ss import (
     add_dict_to_argparser,
     args_to_dict,
     classifier_and_diffusion_defaults,
+    simsiam_and_diffusion_defaults,
+    create_simsiam_and_diffusion,
 )
-from scripts_gdiff.selfsup.support.script_util_ss import create_ssclassifier_and_diffusion_cifar10
-
 from guided_diffusion.train_util import parse_resume_step_from_filename, log_loss_dict
 import hfai.client
-import hfai.multiprocessing
 
 
 def main(local_rank):
@@ -49,13 +48,15 @@ def main(local_rank):
         logger.configure(rank=dist.get_rank())
     logger.log("creating model and diffusion...")
 
-    model, diffusion = create_ssclassifier_and_diffusion_cifar10(
-        **args_to_dict(args, classifier_and_diffusion_defaults().keys())
+    model, diffusion = create_simsiam_and_diffusion(
+        **args_to_dict(args, simsiam_and_diffusion_defaults().keys())
     )
+
+
     model.to(dist_util.dev())
     if args.noised:
-        schedule_sampler = create_named_schedule_sampler(
-            args.schedule_sampler, diffusion
+        schedule_sampler = create_named_schedule_sampler_ext(
+            args.schedule_sampler, diffusion, args.idx_distance
         )
 
     resume_step = 0
@@ -82,6 +83,12 @@ def main(local_rank):
                 "No latest checkpoint found - train from scratch"
             )
             load_last_checkpoint = False
+
+            if args.pretrained_cls:
+                logger.log(
+                    f"loading pretrained classifier mode: {args.pretrained_cls}..."
+                )
+                model.load_state_dict(dist_util.load_state_dict(args.pretrained_cls), strict=False)
         else:
             load_last_checkpoint = True
             logger.log(
@@ -97,7 +104,7 @@ def main(local_rank):
     dist_util.sync_params(model.parameters())
 
     mp_trainer = MixedPrecisionTrainer(
-        model=model, use_fp16=args.classifier_use_fp16, initial_lg_loss_scale=16.0
+        model=model, use_fp16=False, initial_lg_loss_scale=16.0
     )
 
     model = DDP(
@@ -117,7 +124,8 @@ def main(local_rank):
     #     class_cond=True,
     #     random_crop=True,
     # )
-    data = load_dataset_CIFAR10(train=True, batch_size=args.batch_size, class_cond=True, data_folder="data")
+    data = load_data_imagenet_hfai(train=True, image_size=args.image_size,
+                                   batch_size=args.batch_size, random_crop=True)
     if args.val_data_dir:
         # val_data = load_data(
         #     data_dir=args.val_data_dir,
@@ -125,7 +133,8 @@ def main(local_rank):
         #     image_size=args.image_size,
         #     class_cond=True,
         # )
-        val_data = load_dataset_CIFAR10(train=True, batch_size=args.batch_size, class_cond=True, data_folder="data")
+        val_data = load_data_imagenet_hfai(train=False, image_size=args.image_size,
+                                           batch_size=args.batch_size, random_crop=True)
     else:
         val_data = None
 
@@ -150,32 +159,32 @@ def main(local_rank):
                 logger.log(f"Training from {step}")
                 resume_step = step
 
-    logger.log("training self-supervised model...")
 
+
+    logger.log("training classifier model...")
 
     def forward_backward_log(data_loader, prefix="train"):
-        batch, extra = next(data_loader)
-        labels = extra["y"].to(dist_util.dev())
+        batch1, batch2, extra = next(data_loader)
+        # labels = extra["y"].to(dist_util.dev())
 
-        batch = batch.to(dist_util.dev())
+        batch1 = batch1.to(dist_util.dev())
+        batch2 = batch2.to(dist_util.dev())
         # Noisy images
         if args.noised:
-            t1, _ = schedule_sampler.sample(batch.shape[0], dist_util.dev())
-            batch1 = diffusion.q_sample(batch, t1)
-            t2, _ = schedule_sampler.sample(batch.shape[0], dist_util.dev())
-            batch2 = diffusion.q_sample(batch, t2)
+            t1,t2, _ = schedule_sampler.sample(batch1.shape[0], dist_util.dev())
+            batch1 = diffusion.q_sample(batch1, t1)
+            # t2, _ = schedule_sampler.sample(batch2.shape[0], dist_util.dev())
+            batch2 = diffusion.q_sample(batch2, t1)
         else:
-            t1 = th.zeros(batch.shape[0], dtype=th.long, device=dist_util.dev())
+            t1 = th.zeros(batch1.shape[0], dtype=th.long, device=dist_util.dev())
             t2 = t1
-            batch1 = batch
-            batch2 = batch1
+            batch1 = batch1
+            batch2 = batch2
 
-        for i, (sub_batch1, sub_batch2, sub_labels, sub_t1, sub_t2) in enumerate(
-            split_microbatches(args.microbatch, batch1, batch2, labels, t1, t2)
+        for i, (sub_batch1, sub_batch2, sub_t1, sub_t2) in enumerate(
+            split_microbatches(args.microbatch, batch1, batch2, t1, t2)
         ):
-            p1, z1 = model(sub_batch1, timesteps=sub_t1)
-            # loss = F.cross_entropy(logits, sub_labels, reduction="none")
-            p2, z2 = model(sub_batch2, timesteps=sub_t2)
+            p1, p2, z1, z2 = model(sub_batch1, sub_batch2)
 
             loss1 = similarity_loss(p1, z2, False)
             loss2 = similarity_loss(p2, z1, False)
@@ -193,7 +202,7 @@ def main(local_rank):
             if loss.requires_grad:
                 if i == 0:
                     mp_trainer.zero_grad()
-                mp_trainer.backward(loss * len(sub_batch1) / len(batch))
+                mp_trainer.backward(loss * len(sub_batch1) / len(batch1))
     data_iter = iter(data)
     if val_data is not None:
         val_iter = iter(val_data)
@@ -241,6 +250,16 @@ def main(local_rank):
         save_model(mp_trainer, opt, step + resume_step, save_model_folder)
 
     dist.barrier()
+
+
+def similarity_loss(pred, target, mean=True):
+    pred_norm = th.nn.functional.normalize(pred, dim=1)
+    target_norm = th.nn.functional.normalize(target, dim=1)
+    cosine_sim = -(pred_norm * target_norm).sum(dim=1)
+    loss = cosine_sim
+    if mean:
+        loss = loss.mean()
+    return loss
 
 
 def set_annealed_lr(opt, base_lr, frac_done):
@@ -295,27 +314,19 @@ def create_argparser():
         anneal_lr=False,
         batch_size=4,
         microbatch=-1,
-        schedule_sampler="uniform",
+        schedule_sampler="uniform-2-steps",
         resume_checkpoint="",
-        log_interval=500,
+        pretrained_cls="",
+        log_interval=100,
         eval_interval=5,
         save_interval=25000,
-        logdir="runs"
+        logdir="runs",
+        idx_distance=10,
     )
-    defaults.update(classifier_and_diffusion_defaults())
+    defaults.update(simsiam_and_diffusion_defaults())
     parser = argparse.ArgumentParser()
     add_dict_to_argparser(parser, defaults)
     return parser
-
-
-def similarity_loss(pred, target, mean=True):
-    pred_norm = th.nn.functional.normalize(pred, dim=1)
-    target_norm = th.nn.functional.normalize(target, dim=1)
-    cosine_sim = -(pred_norm * target_norm).sum(dim=1)
-    loss = cosine_sim
-    if mean:
-        loss = loss.mean()
-    return loss
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ from guided_diffusion import dist_util, logger
 from guided_diffusion.fp16_util import MixedPrecisionTrainer
 from guided_diffusion.image_datasets import load_data_imagenet_hfai
 from scripts_gdiff.selfsup.analyse.resample_ss import create_named_schedule_sampler
-from guided_diffusion.script_util_ss import (
+from scripts_gdiff.selfsup.support.script_util_ss import (
     add_dict_to_argparser,
     args_to_dict,
     classifier_and_diffusion_defaults,

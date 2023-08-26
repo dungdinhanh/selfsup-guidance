@@ -55,6 +55,52 @@ class ImageNetHF2Views(ImageNet):
             transformed_samples.append((img1, img2, out_dict))
         return transformed_samples
 
+class ImageNetHFAug(ImageNet):
+    def __init__(self, resolution, random_crop=False, random_flip=True, split='train', classes=True, miniset=False):
+        # to_tensor_transform = transforms.Compose([transforms.ToTensor()])
+        super(ImageNetHFAug, self).__init__(split=split, transform=None, check_data=True, miniset=miniset)
+        self.resolution = resolution
+        self.random_crop = random_crop
+        self.random_flip = random_flip
+        self.local_classes = classes
+        augmentation = [
+            transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
+            transforms.RandomGrayscale(p=0.2),
+            transforms.RandomApply([GaussianBlur([.1, 2.])], p=0.5),
+            transforms.RandomHorizontalFlip(),
+        ]
+        self.transform = transforms.Compose(augmentation)
+
+    def __getitem__(self, indices):
+        imgs_bytes = self.reader.read(indices)
+        samples = []
+        for i, bytes_ in enumerate(imgs_bytes):
+            img = pickle.loads(bytes_).convert("RGB")
+            label = self.meta["targets"][indices[i]]
+            samples.append((img, int(label)))
+
+        transformed_samples = []
+        for img, label in samples:
+            img = self.transform(img)
+            if self.random_crop:
+                arr = random_crop_arr(img, self.resolution)
+            else:
+                arr = center_crop_arr(img, self.resolution)
+
+            if self.random_flip and random.random() < 0.5:
+                arr = arr[:, ::-1]
+
+            img = arr.astype(np.float32) / 127.5 - 1
+            img = np.transpose(img, [2, 0, 1]) # might not need to transpose
+            # if self.transform:
+            #     img = self.transform(img)
+            out_dict = {}
+            if self.local_classes:
+                out_dict["y"] = label
+
+            transformed_samples.append((img, out_dict))
+        return transformed_samples
+
 
 class GaussianBlur(object):
     """Gaussian blur augmentation in SimCLR https://arxiv.org/abs/2002.05709"""

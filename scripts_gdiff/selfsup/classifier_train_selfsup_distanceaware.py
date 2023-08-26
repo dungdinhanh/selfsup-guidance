@@ -21,7 +21,7 @@ from guided_diffusion import dist_util, logger
 from guided_diffusion.fp16_util import MixedPrecisionTrainer
 from scripts_gdiff.selfsup.support.image_datasets import load_data_imagenet_hfai
 from scripts_gdiff.selfsup.support.resample_ss import create_named_schedule_sampler_ext
-from guided_diffusion.script_util_ss import (
+from scripts_gdiff.selfsup.support.script_util_ss import (
     add_dict_to_argparser,
     args_to_dict,
     classifier_and_diffusion_defaults,
@@ -185,8 +185,8 @@ def main(local_rank):
             # loss = F.cross_entropy(logits, sub_labels, reduction="none")
             p2, z2 = model(sub_batch2, timesteps=sub_t2)
 
-            loss1 = similarity_loss(p1, z2, False)
-            loss2 = similarity_loss(p2, z1, False)
+            loss1 = similarity_loss(p1, z2.detach(), False)
+            loss2 = similarity_loss(p2, z1.detach(), False)
 
             loss = (loss1 + loss2) * 1/2
 
