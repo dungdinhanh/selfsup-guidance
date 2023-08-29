@@ -485,8 +485,9 @@ class SimSiam(nn.Module):
                                         nn.BatchNorm1d(pred_dim),
                                         nn.ReLU(inplace=True), # hidden layer
                                         nn.Linear(pred_dim, dim)) # output layer
+        self.sampling = False
 
-    def forward(self, x1, x2):
+    def forward_2views(self, x1, x2):
         """
         Input:
             x1: first views of images
@@ -504,6 +505,17 @@ class SimSiam(nn.Module):
         p2 = self.predictor(z2) # NxC
 
         return p1, p2, z1.detach(), z2.detach()
+
+    def forward_1view(self, x1):
+        z1 = self.encoder(x1)
+        p1 = self.predictor(z1)
+        return p1, z1
+
+    def forward(self, x1, x2=None):
+        if self.sampling:
+            return self.forward_1view(x1)
+        else:
+            return self.forward_2views(x1, x2)
 
 def create_simsiam_selfsup(dim, pred_dim, image_size, load_backbone=True):
     # base_model = tmodels.__dict__['resnet50']

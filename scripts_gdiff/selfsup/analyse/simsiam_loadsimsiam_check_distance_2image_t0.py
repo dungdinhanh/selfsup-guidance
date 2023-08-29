@@ -17,7 +17,8 @@ from hfai.nn.parallel import DistributedDataParallel as DDP
 import hfai
 from torch.optim import AdamW
 
-from guided_diffusion import dist_util, logger
+from guided_diffusion import logger
+from scripts_gdiff.selfsup.support import dist_util
 from guided_diffusion.fp16_util import MixedPrecisionTrainer
 from scripts_gdiff.selfsup.support.image_datasets import load_data_imagenet_hfai_aug
 from scripts_gdiff.selfsup.support.resample_ss import create_named_schedule_sampler_ext
@@ -61,16 +62,28 @@ def main(local_rank):
     resume_step = 0
 
     if args.resume_checkpoint:
-        resume_step = parse_resume_step_from_filename(args.resume_checkpoint)
+        if args.resume_checkpoint == "simsiam":
+            logger.log(
+                f"loading model from simsiam: eval_models/simsiam_0099.pth.tar"
+            )
 
-        logger.log(
-            f"loading model from checkpoint: {args.resume_checkpoint}... at {resume_step} step"
-        )
-        model.load_state_dict(
-            dist_util.load_state_dict(
-                args.resume_checkpoint
-            )["state_dict"]
-        )
+            model.load_state_dict(
+                dist_util.load_simsiam(
+                    "eval_models/simsiam_0099.pth.tar"
+                )
+            )
+        else:
+            resume_step = parse_resume_step_from_filename(args.resume_checkpoint)
+
+            logger.log(
+                f"loading model from checkpoint: {args.resume_checkpoint}... at {resume_step} step"
+            )
+            model.load_state_dict(
+                dist_util.load_state_dict(
+                    args.resume_checkpoint
+                )
+            )
+
 
 
     model.eval()
@@ -114,8 +127,8 @@ def main(local_rank):
         # Noisy images
 
         t1 = th.zeros((batch1.shape[0],), device=dist_util.dev(), dtype=th.long)
-        t1 = t1 + 0
-        t2 = t1
+        t1 = t1 + 200
+        t2 = t1 + 4
         batch1 = diffusion.q_sample(batch1, t1)
         batch2 = diffusion.q_sample(batch2, t2)
 
