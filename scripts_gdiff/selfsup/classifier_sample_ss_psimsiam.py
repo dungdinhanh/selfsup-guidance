@@ -78,9 +78,14 @@ def main(local_rank):
     logger.log("loading classifier...")
     classifier = create_simsiam_selfsup(**args_to_dict(args, simsiam_defaults().keys()))
 
-    classifier.load_state_dict(
-        dist_util.load_simsiam("eval_models/simsiam_0099.pth.tar")
-    )
+    if args.classifier_path == "simsiam":
+        classifier.load_state_dict(
+            dist_util.load_simsiam("eval_models/simsiam_0099.pth.tar")
+        )
+    else:
+        classifier.load_state_dict(
+            dist_util.load_state_dict(args.classifier_path, map_location="cpu")
+        )
     classifier.to(dist_util.dev())
     # if args.classifier_use_fp16:
     #     classifier.convert_to_fp16()

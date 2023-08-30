@@ -18,9 +18,10 @@ from hfai.nn.parallel import DistributedDataParallel as DDP
 import hfai
 from torch.optim import AdamW
 
-from guided_diffusion import dist_util, logger
+from guided_diffusion import  logger
+from scripts_gdiff.selfsup.support import dist_util
 from guided_diffusion.fp16_util import MixedPrecisionTrainer
-from scripts_gdiff.selfsup.support.image_datasets import load_data_imagenet_hfai
+from scripts_gdiff.selfsup.support.image_datasets import load_data_imagenet_hfai_3views2imgs
 from scripts_gdiff.selfsup.support.resample_ss import create_named_schedule_sampler_ext
 from scripts_gdiff.selfsup.support.script_util_ss import (
     add_dict_to_argparser,
@@ -86,10 +87,17 @@ def main(local_rank):
             load_last_checkpoint = False
 
             if args.pretrained_cls:
-                logger.log(
-                    f"loading pretrained classifier mode: {args.pretrained_cls}..."
-                )
-                model.load_state_dict(dist_util.load_state_dict(args.pretrained_cls), strict=False)
+                if args.pretrained_cls == "simsiam":
+                    logger.log(
+                        f"loading pretrained simsiam model: eval_models/simsiam_0099.pth.tar"
+                    )
+                    model.load_state_dict(dist_util.load_simsiam("eval_models/simsiam_0099.pth.tar"))
+                else:
+                    logger.log(
+                        f"loading pretrained classifier mode: {args.pretrained_cls}..."
+                    )
+                    model.load_state_dict(dist_util.load_state_dict(args.pretrained_cls), strict=False)
+
         else:
             load_last_checkpoint = True
             logger.log(
@@ -125,7 +133,7 @@ def main(local_rank):
     #     class_cond=True,
     #     random_crop=True,
     # )
-    data = load_data_imagenet_hfai(train=True, image_size=args.image_size,
+    data = load_data_imagenet_hfai_3views2imgs(train=True, image_size=args.image_size,
                                    batch_size=args.batch_size, random_crop=True)
     if args.val_data_dir:
         # val_data = load_data(
@@ -134,7 +142,7 @@ def main(local_rank):
         #     image_size=args.image_size,
         #     class_cond=True,
         # )
-        val_data = load_data_imagenet_hfai(train=False, image_size=args.image_size,
+        val_data = load_data_imagenet_hfai_3views2imgs(train=False, image_size=args.image_size,
                                            batch_size=args.batch_size, random_crop=True)
     else:
         val_data = None
@@ -165,43 +173,50 @@ def main(local_rank):
     logger.log("training classifier model...")
 
     def forward_backward_log(data_loader, prefix="train"):
-        batch1, batch2, extra = next(data_loader)
+        batch1, batch2, batch3, extra, _ = next(data_loader)
         # labels = extra["y"].to(dist_util.dev())
 
         batch1 = batch1.to(dist_util.dev())
         batch2 = batch2.to(dist_util.dev())
+        batch3 = batch3.to(dist_util.dev())
         # Noisy images
         if args.noised:
-            # t1,t2, _ = schedule_sampler.sample(batch1.shape[0], dist_util.dev())
-            t1 = torch.zeros((batch1.shape[0],), device=dist_util.dev(), dtype=torch.long)
-            t2 = t1
+            t1, t2, _ = schedule_sampler.sample(batch1.shape[0], dist_util.dev())
+            # t2 = t1
             batch1 = diffusion.q_sample(batch1, t1)
-            # t2, _ = schedule_sampler.sample(batch2.shape[0], dist_util.dev())
-            batch2 = diffusion.q_sample(batch2, t1)
+            batch2 = diffusion.q_sample(batch2, t2)
+            batch3 = diffusion.q_sample(batch3, t1)
         else:
             t1 = th.zeros(batch1.shape[0], dtype=th.long, device=dist_util.dev())
             t2 = t1
             batch1 = batch1
             batch2 = batch2
+            batch3 = batch3
 
-        for i, (sub_batch1, sub_batch2, sub_t1, sub_t2) in enumerate(
-            split_microbatches(args.microbatch, batch1, batch2, t1, t2)
+        for i, (sub_batch1, sub_batch2, sub_batch3, sub_t1, sub_t2) in enumerate(
+            split_microbatches(args.microbatch, batch1, batch2, batch3, t1, t2)
         ):
             p1, p2, z1, z2 = model(sub_batch1, sub_batch2)
+            p3, z3 = model.module.forward_1view(sub_batch3)
 
             loss1 = similarity_loss(p1, z2, False)
             loss2 = similarity_loss(p2, z1, False)
 
-            loss = (loss1 + loss2) * 1/2
+            loss3 = similarity_loss(p1, z3.detach(), False)
+            loss4 = similarity_loss(p3, z1.detach(), False)
+
+            loss = (loss1 + loss2) * 1/2 - (loss3 + loss4) * 1/2
 
             losses = {}
             losses[f"{prefix}_loss"] = loss.detach()
             losses[f"{prefix}_loss1"] = loss1.detach()
             losses[f"{prefix}_loss2"] = loss2.detach()
+            losses[f"{prefix}_loss3"] = loss3.detach()
+            losses[f"{prefix}_loss4"] = loss4.detach()
 
             log_loss_dict(diffusion, sub_t1, losses)
             del losses
-            loss = 0.5 * (loss1.mean() + loss2.mean())
+            loss = 0.5 * (loss1.mean() + loss2.mean()) - 0.5 * (loss3.mean() + loss4.mean())
             if loss.requires_grad:
                 if i == 0:
                     mp_trainer.zero_grad()

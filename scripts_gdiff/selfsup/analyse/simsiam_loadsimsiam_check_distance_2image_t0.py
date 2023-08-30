@@ -127,7 +127,7 @@ def main(local_rank):
         # Noisy images
 
         t1 = th.zeros((batch1.shape[0],), device=dist_util.dev(), dtype=th.long)
-        t1 = t1 + 200
+        t1 = t1 + 400
         t2 = t1 + 4
         batch1 = diffusion.q_sample(batch1, t1)
         batch2 = diffusion.q_sample(batch2, t2)
