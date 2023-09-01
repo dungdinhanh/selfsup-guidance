@@ -5,7 +5,7 @@ export NCCL_P2P_DISABLE=1
 iter="20"
 
 TRAIN_FLAGS="--iterations ${iter} --anneal_lr True --batch_size 1 --lr 6e-4 --save_interval 1 --weight_decay 0.2 \
---resume_checkpoint runs/selfsup_training_distanceaware_noT/psimsiam50000/models/model049999.pt"
+--resume_checkpoint runs/selfsup_training_distanceaware_noT/psimsiam150000/models/model149999.pt"
 CLASSIFIER_FLAGS="--dim 2048 --pred_dim 512"
 
 cmd="cd .."
