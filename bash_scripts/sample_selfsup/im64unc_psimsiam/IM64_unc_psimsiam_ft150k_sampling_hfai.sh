@@ -20,7 +20,7 @@ cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
-scales=( "1.0" "2.0" "4.0" "6.0" "8.0")
+scales=( "8.0" )
 
 
 for scale in "${scales[@]}"
