@@ -20,16 +20,14 @@ cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
-
-scales=( "8.0" )
-
+scales=( "0.8" "1.0" "1.2" "1.4")
 
 
 for scale in "${scales[@]}"
 do
-cmd="python scripts_gdiff/selfsup/classifier_sample_ss_psimsiam.py $MODEL_FLAGS --classifier_scale ${scale}  \
+cmd="python scripts_gdiff/selfsup/classifier_sample_ss_psimsiam_adaptive.py $MODEL_FLAGS --classifier_scale ${scale}  \
 --classifier_path ss_models/psimsiam150k_temp.pth --model_path models/64x64_diffusion_unc.pt $SAMPLE_FLAGS \
- --logdir runs/sampling_psimsiam/finetune150k/IMN64/unconditional/scale${scale}/ "
+ --logdir runs/sampling_psimsiam/finetune150k_adaptive2/IMN64/unconditional/scale${scale}/ "
 echo ${cmd}
 eval ${cmd}
 done
@@ -37,7 +35,7 @@ done
 for scale in "${scales[@]}"
 do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet64_labeled.npz \
- runs/sampling_psimsiam/finetune150k/IMN64/unconditional/scale${scale}/reference/samples_50000x64x64x3.npz"
+ runs/sampling_psimsiam/finetune150k_adaptive2/IMN64/unconditional/scale${scale}/reference/samples_50000x64x64x3.npz"
 echo ${cmd}
 eval ${cmd}
 done

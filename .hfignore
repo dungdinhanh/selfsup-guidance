@@ -119,7 +119,13 @@ eval_models/advres50_relu.pth
 eval_models/pretext2img
 eval_models/pretext2img_idxtolabels
 
-ss_models/
+ss_models/p50k_ss_cls.pt
+ss_models/p100k_ss_cls.pt
+ss_models/p150k_ss_cls.pt
+ss_models/scratch_ss_cls.pt
+ss_models/psimsiam150k_temp.pth
+eval_models/simsiam_0099.pth.tar
+
 classify_image_graph_def.pb
 evaluations/classify_image_graph_def.pb
 

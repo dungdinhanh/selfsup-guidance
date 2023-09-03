@@ -517,9 +517,23 @@ class SimSiam(nn.Module):
         else:
             return self.forward_2views(x1, x2)
 
-def create_simsiam_selfsup(dim, pred_dim, image_size, load_backbone=True):
+
+def get_simsiam_basemodel(base_model="resnet50"):
+    if base_model == "resnet50":
+        return resnet50
+    elif base_model == "resnet18":
+        return resnet18
+    elif base_model == "resnet101":
+        return resnet101
+    elif base_model == "resnet152":
+        return resnet152
+    else:
+        return resnet50
+
+
+def create_simsiam_selfsup(dim, pred_dim, image_size, base_model="resnet50", load_backbone=True):
     # base_model = tmodels.__dict__['resnet50']
-    base_model = resnet50
+    base_model = get_simsiam_basemodel(base_model)
     model = SimSiam(base_model, dim, pred_dim, load_backbone=load_backbone)
 
     if image_size == 64 or image_size == 128:
@@ -541,7 +555,8 @@ def simsiam_defaults():
     return dict(
         image_size=64,
         dim=2048,
-        pred_dim=512
+        pred_dim=512,
+        base_model="resnet50"
     )
 
 def simsiam_and_diffusion_defaults():
@@ -562,8 +577,9 @@ def create_simsiam_and_diffusion(
     rescale_learned_sigmas,
     pred_dim=512,
     dim=2048,
+    base_model="resnet50"
 ):
-    simsiam = create_simsiam_selfsup(dim, pred_dim, image_size)
+    simsiam = create_simsiam_selfsup(dim, pred_dim, image_size, base_model)
 
     diffusion = create_gaussian_diffusion(
         steps=diffusion_steps,
