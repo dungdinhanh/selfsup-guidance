@@ -94,7 +94,7 @@ def main(local_rank):
     classifier.release_z_grad = True
     classifier.pred_prev = None
     classifier.z_prev = None
-
+    smoothing_factor = 2.0/(10.0 + 1.0)
 
     def cond_fn(x, t, y=None):
         assert y is not None
@@ -102,8 +102,8 @@ def main(local_rank):
             x_in = x.detach().requires_grad_(True)
             if classifier.pred_prev is None:
                 classifier.pred_prev, classifier.z_prev = classifier(x_in, t)
-                classifier.pred_prev = classifier.pred_prev.detach()
-                classifier.z_prev = classifier.z_prev.detach()
+                classifier.pred_prev = classifier.pred_prev.detach() * smoothing_factor
+                classifier.z_prev = classifier.z_prev.detach() * smoothing_factor
                 return torch.zeros_like(x_in, device=dist_util.dev())
             p_x_in, z_x_in = classifier(x_in, t)
             loss1 = similarity_loss(classifier.pred_prev, z_x_in)
@@ -114,8 +114,8 @@ def main(local_rank):
             print(loss2)
             print("))))))))))))))))))))))))))))))))))))))")
             loss = (loss1 + loss2) * 1/2
-            classifier.pred_prev = p_x_in.detach()
-            classifier.z_prev = z_x_in.detach()
+            classifier.pred_prev = p_x_in.detach() * smoothing_factor + classifier.pred_prev * (1 - smoothing_factor)
+            classifier.z_prev = z_x_in.detach() * smoothing_factor + classifier.z_prev * (1 - smoothing_factor)
             return th.autograd.grad(loss, x_in)[0] * args.classifier_scale
 
     def model_fn(x, t, y=None):

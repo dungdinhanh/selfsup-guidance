@@ -94,28 +94,22 @@ def main(local_rank):
     classifier.release_z_grad = True
     classifier.pred_prev = None
     classifier.z_prev = None
-
-
+    smoothing_factor = 2.0/(10.0 + 1.0)
     def cond_fn(x, t, y=None):
         assert y is not None
         with th.enable_grad():
             x_in = x.detach().requires_grad_(True)
             if classifier.pred_prev is None:
                 classifier.pred_prev, classifier.z_prev = classifier(x_in, t)
-                classifier.pred_prev = classifier.pred_prev.detach()
-                classifier.z_prev = classifier.z_prev.detach()
+                classifier.pred_prev = classifier.pred_prev.detach() * smoothing_factor
+                classifier.z_prev = classifier.z_prev.detach() * smoothing_factor
                 return torch.zeros_like(x_in, device=dist_util.dev())
             p_x_in, z_x_in = classifier(x_in, t)
             loss1 = similarity_loss(classifier.pred_prev, z_x_in)
             loss2 = similarity_loss(p_x_in, classifier.z_prev)
-            print("(((((((((((((((((((((((((((((((((((((")
-            print(t[0])
-            print(loss1)
-            print(loss2)
-            print("))))))))))))))))))))))))))))))))))))))")
             loss = (loss1 + loss2) * 1/2
-            classifier.pred_prev = p_x_in.detach()
-            classifier.z_prev = z_x_in.detach()
+            classifier.pred_prev = p_x_in.detach() * smoothing_factor + classifier.pred_prev * (1 - smoothing_factor)
+            classifier.z_prev = z_x_in.detach() * smoothing_factor + classifier.z_prev * (1 - smoothing_factor)
             return th.autograd.grad(loss, x_in)[0] * args.classifier_scale
 
     def model_fn(x, t, y=None):
@@ -126,7 +120,19 @@ def main(local_rank):
     checkpoint = os.path.join(output_images_folder, "samples_last.npz")
     vis_images_folder = os.path.join(output_images_folder, "sample_images")
     os.makedirs(vis_images_folder, exist_ok=True)
-    all_images = []
+    final_file = os.path.join(output_images_folder,
+                              f"samples_{args.num_samples}x{args.image_size}x{args.image_size}x3.npz")
+    if os.path.isfile(final_file):
+        dist.barrier()
+        logger.log("sampling complete")
+        return
+    if os.path.isfile(checkpoint):
+        npzfile = np.load(checkpoint)
+        all_images = list(npzfile['arr_0'])
+        all_labels = list(npzfile['arr_1'])
+    else:
+        all_images = []
+        all_labels = []
     logger.log(f"Number of current images: {len(all_images)}")
     logger.log("sampling...")
     if args.image_size == 28:
@@ -167,10 +173,35 @@ def main(local_rank):
         sample = ((sample + 1) * 127.5).clamp(0, 255).to(th.uint8)
         sample = sample.permute(0, 2, 3, 1)
         sample = sample.contiguous()
-        print("_________________________________________________________________")
 
+        gathered_samples = [th.zeros_like(sample) for _ in range(dist.get_world_size())]
+        dist.all_gather(gathered_samples, sample)  # gather not supported with NCCL
+        batch_images = [sample.cpu().numpy() for sample in gathered_samples]
+        all_images.extend(batch_images)
+        gathered_labels = [th.zeros_like(classes) for _ in range(dist.get_world_size())]
+        dist.all_gather(gathered_labels, classes)
+        batch_labels = [labels.cpu().numpy() for labels in gathered_labels]
+        all_labels.extend(batch_labels)
+        if dist.get_rank() == 0:
+            if hfai.client.receive_suspend_command():
+                print("Receive suspend - good luck next run ^^")
+                hfai.client.go_suspend()
+            logger.log(f"created {len(all_images) * args.batch_size} samples")
+            np.savez(checkpoint, np.stack(all_images), np.stack(all_labels))
 
+    arr = np.concatenate(all_images, axis=0)
+    arr = arr[: args.num_samples]
+    label_arr = np.concatenate(all_labels, axis=0)
+    label_arr = label_arr[: args.num_samples]
+    if dist.get_rank() == 0:
+        shape_str = "x".join([str(x) for x in arr.shape])
+        out_path = os.path.join(output_images_folder, f"samples_{shape_str}.npz")
+        logger.log(f"saving to {out_path}")
+        np.savez(out_path, arr, label_arr)
+        os.remove(checkpoint)
 
+    dist.barrier()
+    logger.log("sampling complete")
 
 
 def create_argparser():

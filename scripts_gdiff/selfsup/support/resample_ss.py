@@ -18,6 +18,8 @@ def create_named_schedule_sampler_ext(name, diffusion, distance=10):
         return UniformSamplerwFix(diffusion)
     elif name == "uniform-2-steps":
         return UniformSampler2steps(diffusion, distance)
+    elif name == "uniform-2-steps-weight":
+        return UniformSampler2stepsWeight(diffusion, distance)
     else:
         raise NotImplementedError(f"unknown schedule sampler: {name}")
 
@@ -106,3 +108,14 @@ class UniformSampler2steps(ScheduleSampler):
         weights_np = 1 / (len(p) * p[indices_np])
         weights = th.from_numpy(weights_np).float().to(device)
         return indices1, indices2, weights
+
+
+class UniformSampler2stepsWeights(UniformSampler2steps):
+    def __init__(self, diffusion, distance=10, ):
+        super().__init__(diffusion, distance)
+
+    def weights(self):
+        pass
+
+
+
