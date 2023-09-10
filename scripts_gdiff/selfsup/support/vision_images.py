@@ -194,6 +194,18 @@ class ImageNetHFAug(ImageNet):
         return transformed_samples
 
 
+class ImageNetHFAug_la(ImageNetHFAug):
+    def __init__(self, resolution, random_crop=False, random_flip=True, split='train', classes=True, miniset=False):
+        super(ImageNetHFAug_la, self).__init__(resolution, random_crop, random_flip, split, classes, miniset)
+        if split == "train":
+            augmentation = [
+                transforms.RandomHorizontalFlip(),
+            ]
+            self.transform = transforms.Compose(augmentation)
+        else:
+            self.transform = transforms.Compose([])
+
+
 class GaussianBlur(object):
     """Gaussian blur augmentation in SimCLR https://arxiv.org/abs/2002.05709"""
 
