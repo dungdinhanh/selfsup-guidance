@@ -8,7 +8,7 @@
 #--pretrained_cls simsiam"
 #CLASSIFIER_FLAGS="--image_size ${imgs} --dim 2048 --pred_dim 512"
 
-cmd="cd ../../../../"
+cmd="cd ../../../"
 echo ${cmd}
 eval ${cmd}
 
@@ -18,9 +18,10 @@ eval ${cmd}
 
 
 # shellcheck disable=SC2089
-cmd="python scripts_gdiff/selfsup/analyse/simsiam/main_lincls_normdiff.py \
+cmd="python scripts_gdiff/selfsup/analyse/simsiam/main_lincls_normdiff_pdiff.py\
   -a resnet50 --dist-url 'tcp://localhost:10001' --multiprocessing-distributed \
-  --world-size 1 --rank 0  --pretrained eval_models/simsiam_0099.pth.tar --lars --image_size 64"
+  --world-size 1 --rank 0  --pretrained runs/selfsup_training_distanceaware_noT/psimsiam150000/models/model149999.pt  \
+  --lars --image_size 64 --save_folder runs/linear_eval/im64_lin_negw"
 #   --world-size 1 --rank 0  --pretrained runs/selfsup_training_distanceaware_noT/psimsiam150000/models/model149999.pt --lars"
 echo ${cmd}
 eval ${cmd}

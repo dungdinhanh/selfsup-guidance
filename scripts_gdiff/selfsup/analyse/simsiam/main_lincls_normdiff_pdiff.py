@@ -14,6 +14,7 @@ import shutil
 import time
 import warnings
 
+import hfai.client
 import torch
 import torch.nn as nn
 import torch.nn.parallel
@@ -93,6 +94,7 @@ parser.add_argument('--pretrained', default='', type=str,
                     help='path to simsiam pretrained checkpoint')
 parser.add_argument('--lars', action='store_true',
                     help='Use LARS')
+parser.add_argument("--save_folder", default="runs/linear_eval", type=str, help="Linear evaluation checkpoint")
 
 best_acc1 = 0
 
@@ -135,10 +137,14 @@ def main():
 def main_worker(gpu, ngpus_per_node, args):
     global best_acc1
     args.gpu = gpu
+
+    save_folder = args.save_folder
+    os.makedirs(save_folder, exist_ok=True)
+    last_file = os.path.join(save_folder, "latest.pt")
     #
     # suppress printing if not master
     if args.multiprocessing_distributed and args.gpu != 0:
-        def print_pass(*args):
+        def print_pass(*args, flush=True):
             pass
         builtins.print = print_pass
 
@@ -158,7 +164,7 @@ def main_worker(gpu, ngpus_per_node, args):
                                 world_size=args.world_size, rank=args.rank)
         torch.distributed.barrier()
     # create model
-    print("=> creating model '{}'".format(args.arch) )
+    print("=> creating model '{}'".format(args.arch), flush=True)
     model = models.__dict__[args.arch]()
     # change first layer
     if args.image_size == 64 or args.image_size == 128:
@@ -170,6 +176,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     # freeze all layers but the last fc
     for name, param in model.named_parameters():
+        print(name)
         if name not in ['fc.weight', 'fc.bias']:
             param.requires_grad = False
 
@@ -184,12 +191,12 @@ def main_worker(gpu, ngpus_per_node, args):
     # load from pre-trained, before DistributedDataParallel constructor
     if args.pretrained:
         if os.path.isfile(args.pretrained):
-            print("=> loading checkpoint '{}'".format(args.pretrained) )
+            print("=> loading checkpoint '{}'".format(args.pretrained), flush=True )
             checkpoint = torch.load(args.pretrained, map_location="cpu")
 
             # rename moco pre-trained keys
-            state_dict = checkpoint['state_dict']
-            # state_dict = checkpoint
+            # state_dict = checkpoint['state_dict']
+            state_dict = checkpoint
             for k in list(state_dict.keys()):
                 # retain only encoder up to before the embedding layer
                 if k.startswith('encoder.') and not k.startswith('encoder.fc'):
@@ -205,9 +212,9 @@ def main_worker(gpu, ngpus_per_node, args):
             # print(msg.missing_keys)
             assert set(msg.missing_keys) == {"fc.weight", "fc.bias"}
 
-            print("=> loaded pre-trained model '{}'".format(args.pretrained) )
+            print("=> loaded pre-trained model '{}'".format(args.pretrained), flush=True)
         else:
-            print("=> no checkpoint found at '{}'".format(args.pretrained) )
+            print("=> no checkpoint found at '{}'".format(args.pretrained), flush=True)
 
     # infer learning rate before changing batch size
     init_lr = args.lr * args.batch_size / 256
@@ -252,31 +259,41 @@ def main_worker(gpu, ngpus_per_node, args):
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
     if args.lars:
-        print("=> use LARS optimizer." )
+        print("=> use LARS optimizer.", flush=True)
         from apex.parallel.LARC import LARC
         optimizer = LARC(optimizer=optimizer, trust_coefficient=.001, clip=False)
 
     # optionally resume from a checkpoint
-    if args.resume:
-        if os.path.isfile(args.resume):
-            print("=> loading checkpoint '{}'".format(args.resume))
-            if args.gpu is None:
-                checkpoint = torch.load(args.resume)
-            else:
-                # Map model to be loaded to specified single gpu.
-                loc = 'cuda:{}'.format(args.gpu)
-                checkpoint = torch.load(args.resume, map_location=loc)
-            args.start_epoch = checkpoint['epoch']
-            best_acc1 = checkpoint['best_acc1']
-            if args.gpu is not None:
-                # best_acc1 may be from a checkpoint from a different GPU
-                best_acc1 = best_acc1.to(args.gpu)
-            model.load_state_dict(checkpoint['state_dict'])
-            optimizer.load_state_dict(checkpoint['optimizer'])
-            print("=> loaded checkpoint '{}' (epoch {})"
-                  .format(args.resume, checkpoint['epoch']))
+    # if args.resume:
+    if os.path.isfile(last_file):
+        print("=> loading checkpoint '{}'".format(last_file), flush=True)
+        if args.gpu is None:
+            checkpoint = torch.load(last_file)
         else:
-            print("=> no checkpoint found at '{}'".format(args.resume))
+            # Map model to be loaded to specified single gpu.
+            loc = 'cuda:{}'.format(args.gpu)
+            checkpoint = torch.load(last_file, map_location=loc)
+        args.start_epoch = checkpoint['epoch']
+        best_acc1 = checkpoint['best_acc1']
+        if args.gpu is not None:
+            # best_acc1 may be from a checkpoint from a different GPU
+            best_acc1 = best_acc1.to(args.gpu)
+        model.load_state_dict(checkpoint['state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        s_iter = checkpoint['s_iter']
+        count= checkpoint['count']
+        acc1 = checkpoint['acc1']
+        acc5 = checkpoint['acc5']
+        loss = checkpoint['loss']
+        print("=> loaded checkpoint '{}' (epoch {})"
+              .format(last_file, checkpoint['epoch']), flush=True)
+    else:
+        print("=> no checkpoint found at '{}'".format(last_file), flush=True)
+        count = 0
+        acc1 = 0.0
+        acc5 = 0.0
+        loss = 0.0
+        s_iter = 0
 
     cudnn.benchmark = True
 
@@ -305,7 +322,8 @@ def main_worker(gpu, ngpus_per_node, args):
         adjust_learning_rate(optimizer, init_lr, epoch, args)
 
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, args)
+        train(train_loader, model, criterion, optimizer, epoch, args, s_iter, count, acc1, acc5, loss,
+              ngpus_per_node, last_file)
 
         # evaluate on validation set
         acc1 = validate(val_loader, model, criterion, args)
@@ -322,12 +340,18 @@ def main_worker(gpu, ngpus_per_node, args):
                 'state_dict': model.state_dict(),
                 'best_acc1': best_acc1,
                 'optimizer' : optimizer.state_dict(),
-            }, is_best)
+                's_iter': 0,
+                'count': 0,
+                'acc1': 0.0,
+                'acc5': 0.0,
+                'loss': 0.0,
+            }, is_best, last_file)
             if epoch == args.start_epoch:
                 sanity_check(model.state_dict(), args.pretrained)
 
 
-def train(train_loader, model, criterion, optimizer, epoch, args):
+def train(train_loader, model, criterion, optimizer, epoch, args, s_iter=0, count=0, acc1=0.0, acc5=0.0, loss=0.0,
+          ngpus_per_node=8,last_file="checkpoint.pt"):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -337,6 +361,10 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         len(train_loader),
         [batch_time, data_time, losses, top1, top5],
         prefix="Epoch: [{}]".format(epoch))
+    if count != 0:
+        losses.update(loss, count)
+        top1.update(acc1, count)
+        top5.update(acc5, count)
 
     """
     Switch to eval mode:
@@ -349,6 +377,8 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
     end = time.time()
     for i, (images, target) in enumerate(train_loader):
+        if i > s_iter:
+            continue
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -378,6 +408,21 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         if i % args.print_freq == 0:
             progress.display(i)
 
+        if (not args.multiprocessing_distributed and hfai.client.receive_suspend_command()) or (args.multiprocessing_distributed
+                and args.rank % ngpus_per_node and hfai.client.receive_suspend_command()):
+            save_last_iter({
+                'epoch': epoch,
+                'arch': args.arch,
+                'state_dict': model.state_dict(),
+                'best_acc1': best_acc1,
+                'optimizer' : optimizer.state_dict(),
+                's_iter': i+1,
+                'count': top1.count,
+                'acc1': top1.sum,
+                'acc5': top5.sum,
+                'loss': loss.sum,
+            }, last_file)
+
 
 def validate(val_loader, model, criterion, args):
     batch_time = AverageMeter('Time', ':6.3f')
@@ -397,7 +442,7 @@ def validate(val_loader, model, criterion, args):
         for i, (images, target) in enumerate(val_loader):
             if args.gpu is not None:
                 images = images.cuda(args.gpu, non_blocking=True)
-            target = target.cuda(args.gpu, non_blocking=True)
+            target = target['y'].cuda(args.gpu, non_blocking=True)
 
             # compute output
             output = model(images)
@@ -418,15 +463,19 @@ def validate(val_loader, model, criterion, args):
 
         # TODO: this should also be done with the ProgressMeter
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
-              .format(top1=top1, top5=top5))
+              .format(top1=top1, top5=top5), flush=True)
 
     return top1.avg
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     torch.save(state, filename)
+    base_folder = os.path.dirname(filename)
     if is_best:
-        shutil.copyfile(filename, 'model_best.pth.tar')
+        shutil.copyfile(filename, os.path.join(base_folder, 'model_best.pth.tar'))
+
+def save_last_iter(state, filename):
+    torch.save(state, filename)
 
 
 def sanity_check(state_dict, pretrained_weights):
@@ -434,9 +483,9 @@ def sanity_check(state_dict, pretrained_weights):
     Linear classifier should not change any weights other than the linear layer.
     This sanity check asserts nothing wrong happens (e.g., BN stats updated).
     """
-    print("=> loading '{}' for sanity check".format(pretrained_weights))
+    print("=> loading '{}' for sanity check".format(pretrained_weights), flush=True)
     checkpoint = torch.load(pretrained_weights, map_location="cpu")
-    state_dict_pre = checkpoint['state_dict']
+    state_dict_pre = checkpoint
 
     for k in list(state_dict.keys()):
         # only ignore fc layer
@@ -444,13 +493,13 @@ def sanity_check(state_dict, pretrained_weights):
             continue
 
         # name in pretrained model
-        k_pre = 'module.encoder.' + k[len('module.'):] \
-            if k.startswith('module.') else 'module.encoder.' + k
+        k_pre = 'encoder.' + k[len('module.'):] \
+            if k.startswith('module.') else 'encoder.' + k
 
         assert ((state_dict[k].cpu() == state_dict_pre[k_pre]).all()), \
             '{} is changed in linear classifier training.'.format(k)
 
-    print("=> sanity check passed.")
+    print("=> sanity check passed.", flush=True)
 
 
 class AverageMeter(object):
@@ -486,7 +535,7 @@ class ProgressMeter(object):
     def display(self, batch):
         entries = [self.prefix + self.batch_fmtstr.format(batch)]
         entries += [str(meter) for meter in self.meters]
-        print('\t'.join(entries))
+        print('\t'.join(entries), flush=True)
 
     def _get_batch_fmtstr(self, num_batches):
         num_digits = len(str(num_batches // 1))
