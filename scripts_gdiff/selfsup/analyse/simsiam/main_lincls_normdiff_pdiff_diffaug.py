@@ -34,6 +34,10 @@ from torch.utils.data.distributed import DistributedSampler
 # from scripts_gdiff.selfsup.support import dist_util
 # import hfai.nccl.distributed as dist
 
+from guided_diffusion.script_util import create_gaussian_diffusion, diffusion_defaults
+from guided_diffusion.resample import create_named_schedule_sampler, ScheduleSampler
+from guided_diffusion.respace import SpacedDiffusion
+
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name]))
@@ -181,12 +185,27 @@ def main_worker(gpu, ngpus_per_node, args):
             param.requires_grad = False
 
 
-
-
-
     # init the fc layer
     model.fc.weight.data.normal_(mean=0.0, std=0.01)
     model.fc.bias.data.zero_()
+
+    # diffusion model
+    args_dict = diffusion_defaults()
+    args_input={
+    'steps': args_dict['diffusion_steps'],
+    'learn_sigma': args_dict['learn_sigma'],
+    'sigma_small': False,
+    'noise_schedule': "linear", #note
+    'use_kl': args_dict['use_kl'],
+    'predict_xstart': args_dict['predict_xstart'],
+    'rescale_timesteps': args_dict['rescale_timesteps'],
+    'rescale_learned_sigmas': args_dict['rescale_learned_sigmas'],
+    'timestep_respacing': args_dict['timestep_respacing']}
+
+    diffusion = create_gaussian_diffusion(**args_input)
+    schedule_sampler = create_named_schedule_sampler("uniform", diffusion)
+
+
 
     # load from pre-trained, before DistributedDataParallel constructor
     if args.pretrained:
@@ -313,7 +332,7 @@ def main_worker(gpu, ngpus_per_node, args):
     val_loader = val_dataset.loader(batch_size=args.batch_size, num_workers=8, pin_memory=True, shuffle=False)
 
     if args.evaluate:
-        validate(val_loader, model, criterion, args)
+        validate(val_loader, model, criterion, args, diffusion, schedule_sampler)
         return
 
     for epoch in range(args.start_epoch, args.epochs):
@@ -322,11 +341,11 @@ def main_worker(gpu, ngpus_per_node, args):
         adjust_learning_rate(optimizer, init_lr, epoch, args)
 
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, args, s_iter, count, acc1, acc5, loss,
+        train(train_loader, model, criterion, optimizer, epoch, args, diffusion, schedule_sampler, s_iter, count, acc1, acc5, loss,
               ngpus_per_node, last_file)
 
         # evaluate on validation set
-        acc1 = validate(val_loader, model, criterion, args)
+        acc1 = validate(val_loader, model, criterion, args, diffusion, schedule_sampler)
 
         # remember best acc@1 and save checkpoint
         is_best = acc1 > best_acc1
@@ -350,8 +369,12 @@ def main_worker(gpu, ngpus_per_node, args):
                 sanity_check(model.state_dict(), args.pretrained)
 
 
-def train(train_loader, model, criterion, optimizer, epoch, args, s_iter=0, count=0, acc1=0.0, acc5=0.0, loss=0.0,
+def train(train_loader, model, criterion, optimizer, epoch, args, diffusion:SpacedDiffusion,
+          schedule_sampler:ScheduleSampler, s_iter=0, count=0, acc1=0.0, acc5=0.0, loss=0.0,
           ngpus_per_node=8,last_file="checkpoint.pt"):
+    assert diffusion is not None, "Diffusion is None"
+    assert schedule_sampler is not None, "Schedule sampler is None"
+
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -385,6 +408,10 @@ def train(train_loader, model, criterion, optimizer, epoch, args, s_iter=0, coun
         if args.gpu is not None:
             images = images.cuda(args.gpu, non_blocking=True)
         target = target['y'].cuda(args.gpu, non_blocking=True)
+
+        t, _ = schedule_sampler.sample(images.shape[0], device=torch.device(f"cuda:{args.gpu}"))
+        images = diffusion.q_sample(images, t)
+
 
         # compute output
         output = model(images)
@@ -424,7 +451,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args, s_iter=0, coun
             }, last_file)
 
 
-def validate(val_loader, model, criterion, args):
+def validate(val_loader, model, criterion, args, diffusion: SpacedDiffusion, schedule_sampler: ScheduleSampler):
     batch_time = AverageMeter('Time', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
@@ -443,6 +470,9 @@ def validate(val_loader, model, criterion, args):
             if args.gpu is not None:
                 images = images.cuda(args.gpu, non_blocking=True)
             target = target['y'].cuda(args.gpu, non_blocking=True)
+
+            t, _ = schedule_sampler.sample(images.shape[0], device=torch.device(f"cuda:{args.gpu}"))
+            images = diffusion.q_sample(images, t)
 
             # compute output
             output = model(images)

@@ -195,8 +195,8 @@ def main_worker(gpu, ngpus_per_node, args):
             checkpoint = torch.load(args.pretrained, map_location="cpu")
 
             # rename moco pre-trained keys
-            # state_dict = checkpoint['state_dict']
-            state_dict = checkpoint
+            state_dict = checkpoint['state_dict']
+            # state_dict = checkpoint
             for k in list(state_dict.keys()):
                 # retain only encoder up to before the embedding layer
                 if k.startswith('encoder.') and not k.startswith('encoder.fc'):
@@ -377,7 +377,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args, s_iter=0, coun
 
     end = time.time()
     for i, (images, target) in enumerate(train_loader):
-        if i < s_iter:
+        if i > s_iter:
             continue
         # measure data loading time
         data_time.update(time.time() - end)
@@ -483,9 +483,9 @@ def sanity_check(state_dict, pretrained_weights):
     Linear classifier should not change any weights other than the linear layer.
     This sanity check asserts nothing wrong happens (e.g., BN stats updated).
     """
-    print("=> loading '{}' for sanity check".format(pretrained_weights), flush=True)
+    print("=> loading '{}' for sanity check".format(pretrained_weights))
     checkpoint = torch.load(pretrained_weights, map_location="cpu")
-    state_dict_pre = checkpoint
+    state_dict_pre = checkpoint['state_dict']
 
     for k in list(state_dict.keys()):
         # only ignore fc layer
@@ -493,13 +493,13 @@ def sanity_check(state_dict, pretrained_weights):
             continue
 
         # name in pretrained model
-        k_pre = 'encoder.' + k[len('module.'):] \
-            if k.startswith('module.') else 'encoder.' + k
+        k_pre = 'module.encoder.' + k[len('module.'):] \
+            if k.startswith('module.') else 'module.encoder.' + k
 
         assert ((state_dict[k].cpu() == state_dict_pre[k_pre]).all()), \
             '{} is changed in linear classifier training.'.format(k)
 
-    print("=> sanity check passed.", flush=True)
+    print("=> sanity check passed.")
 
 
 class AverageMeter(object):
