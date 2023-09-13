@@ -18,11 +18,11 @@ eval ${cmd}
 
 
 # shellcheck disable=SC2089
-cmd="python scripts_gdiff/selfsup/analyse/simsiam/main_lincls_normdiff_pdiff.py \
+cmd="python scripts_gdiff/selfsup/analyse/simsiam/main_lincls_normdiff_psimsiam.py \
   -a resnet50 --dist-url 'tcp://localhost:10001' --multiprocessing-distributed \
   --world-size 1 --rank 0  \
-  --pretrained runs/selfsup_training_distanceaware_noT/psimsiam150000_IM128/models/model149999.pt \
-  --lars --save_folder runs/linear_eval/im128_lin_negw --image_size 128"
+  --pretrained eval_models/simsiam_0099.pth.tar \
+  --lars --save_folder runs/linear_eval/im128_lin_simsiam --image_size 128"
 #   --world-size 1 --rank 0  --pretrained runs/selfsup_training_distanceaware_noT/psimsiam150000/models/model149999.pt --lars"
 echo ${cmd}
 eval ${cmd}

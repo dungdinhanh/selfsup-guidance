@@ -377,7 +377,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args, s_iter=0, coun
 
     end = time.time()
     for i, (images, target) in enumerate(train_loader):
-        if i > s_iter:
+        if i < s_iter:
             continue
         # measure data loading time
         data_time.update(time.time() - end)
