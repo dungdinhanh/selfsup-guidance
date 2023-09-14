@@ -420,7 +420,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args, s_iter=0, coun
                 'count': top1.count,
                 'acc1': top1.sum,
                 'acc5': top5.sum,
-                'loss': loss.sum,
+                'loss': losses.sum,
             }, last_file)
 
 

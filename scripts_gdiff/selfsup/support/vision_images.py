@@ -75,8 +75,9 @@ class ImageNetHF3Views2Imgs(ImageNet):
         new_indices = np.random.randint(len(self), size=len(indices))
         compare = (new_indices == indices)
         new_indices[compare] += 1
-        larger_than_len = (new_indices[compare] >= len(self))
-        new_indices[compare][larger_than_len] -= 2
+        larger_than_len = (new_indices >= len(self))
+        new_indices[larger_than_len] -= 2
+
 
         imgs_bytes = self.reader.read(new_indices)
         samples = []

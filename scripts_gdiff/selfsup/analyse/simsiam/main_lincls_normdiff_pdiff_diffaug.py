@@ -447,7 +447,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args, diffusion:Spac
                 'count': top1.count,
                 'acc1': top1.sum,
                 'acc5': top5.sum,
-                'loss': loss.sum,
+                'loss': losses.sum,
             }, last_file)
 
 

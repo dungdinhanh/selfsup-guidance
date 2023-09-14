@@ -19,7 +19,9 @@ def create_named_schedule_sampler_ext(name, diffusion, distance=10):
     elif name == "uniform-2-steps":
         return UniformSampler2steps(diffusion, distance)
     elif name == "uniform-2-steps-weight":
-        return UniformSampler2stepsWeight(diffusion, distance)
+        return UniformSampler2stepsWeights(diffusion, distance)
+    elif name == "uniform-2-steps-control":
+        return UniformSampler2stepsControl(diffusion)
     else:
         raise NotImplementedError(f"unknown schedule sampler: {name}")
 
@@ -116,6 +118,54 @@ class UniformSampler2stepsWeights(UniformSampler2steps):
 
     def weights(self):
         pass
+
+class UniformSampler2stepsControl(UniformSampler2steps):
+    def __init__(self, diffusion, distance=[]):
+        super().__init__(diffusion)
+
+        if len(distance) == 0:
+            self.distance = [(400, 500), (20, 50), (10, 20)]
+        else:
+            self.distance = []
+            for i in range(0, len(distance), step=2):
+                self.distance.append((distance[i], distance[i+1]))
+
+    def sample(self, batch_size, device):
+        """
+        Importance-sample timesteps for a batch.
+
+        :param batch_size: the number of timesteps.
+        :param device: the torch device to save to.
+        :return: a tuple (timesteps, weights):
+                 - timesteps: a tensor of timestep indices.
+                 - weights: a tensor of weights to scale the resulting losses.
+        """
+        w = self.weights()
+        p = w / np.sum(w)
+        indices_np = np.random.choice(len(p), size=(batch_size,), p=p)
+
+        indx_distance = np.zeros_like(indices_np)
+
+        # range 1: > 600
+        items_range1 = indices_np >= 600
+        indx_distance[items_range1] = np.random.random_integers(self.distance[0][0], self.distance[0][1], indx_distance[items_range1].shape)
+
+        items_range2 = ((indices_np < 600) & (indices_np >= 300))
+        indx_distance[items_range2] = np.random.random_integers(self.distance[1][0], self.distance[1][1], indx_distance[items_range2].shape)
+
+        items_range3 = indices_np < 300
+        indx_distance[items_range3] = np.random.random_integers(self.distance[2][0], self.distance[2][1], indx_distance[items_range3].shape)
+
+        # indx_distance = np.random.choice(self.distance, size=(batch_size,))
+
+        indices_np2 = indices_np - indx_distance
+        indices_np2 = np.clip(indices_np2, 0, len(p) - 1)
+        indices1 = th.from_numpy(indices_np2).long().to(device)
+        indices2 = th.from_numpy(indices_np).long().to(device)
+        weights_np = 1 / (len(p) * p[indices_np])
+        weights = th.from_numpy(weights_np).float().to(device)
+        return indices1, indices2, weights
+
 
 
 

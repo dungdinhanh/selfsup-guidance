@@ -276,8 +276,9 @@ def main_worker(gpu, ngpus_per_node, args):
         args.start_epoch = checkpoint['epoch']
         best_acc1 = checkpoint['best_acc1']
         if args.gpu is not None:
-            # best_acc1 may be from a checkpoint from a different GPU
-            best_acc1 = best_acc1.to(args.gpu)
+            # best_acc1 may be from a checkpoint from a different GPU? why?
+            best_acc1 = torch.tensor(best_acc1).to(args.gpu)
+            # best_acc1 = best_acc1.to(args.gpu)
         model.load_state_dict(checkpoint['state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer'])
         s_iter = checkpoint['s_iter']
@@ -420,7 +421,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args, s_iter=0, coun
                 'count': top1.count,
                 'acc1': top1.sum,
                 'acc5': top5.sum,
-                'loss': loss.sum,
+                'loss': losses.sum,
             }, last_file)
 
 
