@@ -160,8 +160,8 @@ class UniformSampler2stepsControl(UniformSampler2steps):
 
         indices_np2 = indices_np - indx_distance
         indices_np2 = np.clip(indices_np2, 0, len(p) - 1)
-        indices1 = th.from_numpy(indices_np2).long().to(device)
-        indices2 = th.from_numpy(indices_np).long().to(device)
+        indices1 = th.from_numpy(indices_np).long().to(device)
+        indices2 = th.from_numpy(indices_np2).long().to(device)
         weights_np = 1 / (len(p) * p[indices_np])
         weights = th.from_numpy(weights_np).float().to(device)
         return indices1, indices2, weights
