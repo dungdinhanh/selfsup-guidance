@@ -26,7 +26,7 @@ do
   for ft in "${fts[@]}"
   do
 cmd="python scripts_gdiff/selfsup/classifier_sample_ss_psimsiam_ema.py $MODEL_FLAGS --classifier_scale ${scale} \
- --classifier_path runs/selfsup_training_distanceaware_noT/psimsiam${ft}_IM128/models/model299999.pt \
+ --classifier_path  \
 --model_path models/128x128_diffusion.pt $SAMPLE_FLAGS  --logdir runs/sampling_ema/IMN128_sft${ft}/conditional/scale${scale}/"
 echo ${cmd}
 eval ${cmd}

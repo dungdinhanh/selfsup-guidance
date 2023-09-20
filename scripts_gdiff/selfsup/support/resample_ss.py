@@ -1,7 +1,7 @@
 from guided_diffusion.resample import *
 
 
-def create_named_schedule_sampler_ext(name, diffusion, distance=10):
+def create_named_schedule_sampler_ext(name, diffusion, distance=10, p = 700):
     """
     Create a ScheduleSampler from a library of pre-defined samplers.
 
@@ -24,6 +24,8 @@ def create_named_schedule_sampler_ext(name, diffusion, distance=10):
         return UniformSampler2stepsControl(diffusion)
     elif name == "uniform-2-steps-control-max600":
         return UniformSampler2stepsControlMax600(diffusion)
+    elif name == "uniform-2-steps-control-maxp":
+        return UniformSampler2stepsControlMaxP(diffusion, p=p)
     else:
         raise NotImplementedError(f"unknown schedule sampler: {name}")
 
@@ -189,6 +191,50 @@ class UniformSampler2stepsControlMax600(UniformSampler2stepsControl):
         p = w / np.sum(w)
         max_p = len(p) - 300
         indices_np = np.random.choice(max_p, size=(batch_size,), p=p)
+
+        indx_distance = np.zeros_like(indices_np)
+
+        # range 1: > 600
+        items_range1 = indices_np >= 600
+        indx_distance[items_range1] = np.random.random_integers(self.distance[0][0], self.distance[0][1], indx_distance[items_range1].shape)
+
+        items_range2 = ((indices_np < 600) & (indices_np >= 300))
+        indx_distance[items_range2] = np.random.random_integers(self.distance[1][0], self.distance[1][1], indx_distance[items_range2].shape)
+
+        items_range3 = indices_np < 300
+        indx_distance[items_range3] = np.random.random_integers(self.distance[2][0], self.distance[2][1], indx_distance[items_range3].shape)
+
+        # indx_distance = np.random.choice(self.distance, size=(batch_size,))
+
+        indices_np2 = indices_np - indx_distance
+        indices_np2 = np.clip(indices_np2, 0, len(p) - 1)
+        indices1 = th.from_numpy(indices_np).long().to(device)
+        indices2 = th.from_numpy(indices_np2).long().to(device)
+        weights_np = 1 / (len(p) * p[indices_np])
+        weights = th.from_numpy(weights_np).float().to(device)
+        return indices1, indices2, weights
+
+class UniformSampler2stepsControlMaxP(UniformSampler2stepsControl):
+    def __init__(self, diffusion, p, distance=[]):
+        super().__init__(diffusion)
+        self.p = p
+
+
+    def sample(self, batch_size, device):
+        """
+        Importance-sample timesteps for a batch.
+
+        :param batch_size: the number of timesteps.
+        :param device: the torch device to save to.
+        :return: a tuple (timesteps, weights):
+                 - timesteps: a tensor of timestep indices.
+                 - weights: a tensor of weights to scale the resulting losses.
+        """
+
+        w = self.weights()
+        p = w / np.sum(w)
+        max_p = self.p
+        indices_np = np.random.choice(max_p, size=(batch_size,))
 
         indx_distance = np.zeros_like(indices_np)
 
