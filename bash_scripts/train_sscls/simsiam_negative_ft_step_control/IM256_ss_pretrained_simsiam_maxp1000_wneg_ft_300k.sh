@@ -1,6 +1,6 @@
 #!/bin/bash
 
-
+#export NCCL_P2P_DISABLE=1
 iter="300000"
 imgs="256"
 
@@ -17,7 +17,7 @@ echo ${cmd}
 eval ${cmd}
 
 
-cmd="python scripts_gdiff/selfsup/classifier_train_selfsup_simsiam_samplercontrol_negative_ft.py --data_dir path/to/imagenet --logdir \
-runs/selfsup_training_distanceaware_noT/psimsiam${iter}_IM${imgs} $TRAIN_FLAGS $CLASSIFIER_FLAGS"
+cmd="python scripts_gdiff/selfsup/classifier_train_selfsup_simsiam_samplercontrol_maxp_wnegative_ft.py --data_dir path/to/imagenet --logdir \
+runs/selfsup_training_distanceaware_noT/psimsiam${iter}_IM${imgs}_wneg0.5_maxp1000 --wneg 0.5 $TRAIN_FLAGS $CLASSIFIER_FLAGS --maxtime 1000"
 echo ${cmd}
 eval ${cmd}

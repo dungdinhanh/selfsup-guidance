@@ -58,7 +58,7 @@ def main(local_rank):
     model.to(dist_util.dev())
     if args.noised:
         schedule_sampler = create_named_schedule_sampler_ext(
-            args.schedule_sampler, diffusion, args.idx_distance
+            args.schedule_sampler, diffusion, args.idx_distance, p=args.maxtime
         )
 
     resume_step = 0
@@ -337,7 +337,7 @@ def create_argparser():
         anneal_lr=False,
         batch_size=4,
         microbatch=-1,
-        schedule_sampler="uniform-2-steps-control-max600",
+        schedule_sampler="uniform-2-steps-control-maxp",
         resume_checkpoint="",
         pretrained_cls="",
         log_interval=100,
