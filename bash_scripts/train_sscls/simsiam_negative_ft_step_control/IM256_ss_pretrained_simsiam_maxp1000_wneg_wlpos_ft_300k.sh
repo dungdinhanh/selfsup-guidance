@@ -17,7 +17,7 @@ echo ${cmd}
 eval ${cmd}
 
 
-cmd="python scripts_gdiff/selfsup/classifier_train_selfsup_simsiam_samplercontrol_maxp_wnegative_wloss_ft.py --data_dir path/to/imagenet --logdir \
-runs/selfsup_training_distanceaware_noT/psimsiam${iter}_IM${imgs}_wl_maxp700 --wneg 0.2 $TRAIN_FLAGS $CLASSIFIER_FLAGS --maxtime 700"
+cmd="python scripts_gdiff/selfsup/classifier_train_selfsup_simsiam_samplercontrol_maxp_wnegative_wloss_ft2.py --data_dir path/to/imagenet --logdir \
+runs/selfsup_training_distanceaware_noT/psimsiam${iter}_IM${imgs}_wl_maxp1000 --wneg 0.2 $TRAIN_FLAGS $CLASSIFIER_FLAGS --maxtime 800"
 echo ${cmd}
 eval ${cmd}
