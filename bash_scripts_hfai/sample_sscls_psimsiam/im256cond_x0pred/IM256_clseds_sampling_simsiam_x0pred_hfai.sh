@@ -34,7 +34,7 @@ do
 cmd="python scripts_gdiff/selfsup/classifier_sample_ss_psimsiam_x0pred.py $MODEL_FLAGS --classifier_scale ${scale}  \
 --classifier_path simsiam \
  --model_path models/256x256_diffusion.pt $SAMPLE_FLAGS --k_step ${kstep} \
- --logdir runs/sampling_eds_negw/IMN256/conditional/scale${scale}_k${kstep}/ "
+ --logdir runs/sampling_simsiam/IMN256/conditional/scale${scale}_k${kstep}/ "
 echo ${cmd}
 eval ${cmd}
 done
