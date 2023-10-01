@@ -18,7 +18,7 @@ echo ${cmd}
 eval ${cmd}
 
 scales=("0.5" "0.7" "1.0" "2.0")
-ksteps=("5")
+ksteps=("10")
 
 
 
