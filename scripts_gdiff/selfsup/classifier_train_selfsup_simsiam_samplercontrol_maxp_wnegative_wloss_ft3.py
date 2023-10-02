@@ -212,7 +212,7 @@ def main(local_rank):
             loss3 = similarity_loss(p1, z3.detach(), False)
             loss4 = similarity_loss(p3, z1.detach(), False)
 
-            loss = (loss1 + loss2) * 1/2 * sub_wp - (loss3 + loss4) * 1/2 * sub_wn
+            loss = (loss1 + loss2) * 1 / 2 * sub_wp - (loss3 + loss4) * 1 / 2 * sub_wn
 
             losses = {}
             losses[f"{prefix}_loss"] = loss.detach()
@@ -340,7 +340,7 @@ def create_argparser():
         anneal_lr=False,
         batch_size=4,
         microbatch=-1,
-        schedule_sampler="uniform-2-steps-control-maxp-wl",
+        schedule_sampler="uniform-2-steps-control-maxp-wl3",
         resume_checkpoint="",
         pretrained_cls="",
         log_interval=100,

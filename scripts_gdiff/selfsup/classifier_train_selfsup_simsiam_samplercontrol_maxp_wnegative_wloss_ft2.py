@@ -204,27 +204,23 @@ def main(local_rank):
             split_microbatches(args.microbatch, batch1, batch2, batch3, t1, t2, weight_neg, weight_pos)
         ):
             p1, p2, z1, z2 = model(sub_batch1, sub_batch2)
-            p3, z3 = model.module.forward_1view(sub_batch3)
 
             loss1 = similarity_loss(p1, z2, False)
             loss2 = similarity_loss(p2, z1, False)
 
-            loss3 = similarity_loss(p1, z3.detach(), False)
-            loss4 = similarity_loss(p3, z1.detach(), False)
 
-            loss = (loss1 + loss2) * 1/2 * sub_wp - (loss3 + loss4) * 1/2 * sub_wn
+
+            loss = (loss1 + loss2) * 1/2 * sub_wp
 
             losses = {}
             losses[f"{prefix}_loss"] = loss.detach()
             losses[f"{prefix}_loss1"] = loss1.detach()
             losses[f"{prefix}_loss2"] = loss2.detach()
-            losses[f"{prefix}_loss3"] = loss3.detach()
-            losses[f"{prefix}_loss4"] = loss4.detach()
+
 
             log_loss_dict(diffusion, sub_t1, losses)
             del losses
-            loss = 0.5 * ((loss1 * sub_wp).mean() + (loss2 * sub_wp).mean()) - \
-                   0.5 * ((loss3 * sub_wn).mean() + (loss4 * sub_wn).mean())
+            loss = 0.5 * ((loss1 * sub_wp).mean() + (loss2 * sub_wp).mean())
             if loss.requires_grad:
                 if i == 0:
                     mp_trainer.zero_grad()
@@ -340,7 +336,7 @@ def create_argparser():
         anneal_lr=False,
         batch_size=4,
         microbatch=-1,
-        schedule_sampler="uniform-2-steps-control-maxp-wl",
+        schedule_sampler="uniform-2-steps-control-maxp-wl2",
         resume_checkpoint="",
         pretrained_cls="",
         log_interval=100,
