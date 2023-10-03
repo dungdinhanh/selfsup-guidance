@@ -7,24 +7,21 @@ import argparse
 import os
 
 import numpy as np
-import torch
 import torch as th
 # import torch.distributed as dist
 import hfai.nccl.distributed as dist
 import torch.nn.functional as F
 import hfai
-from guided_diffusion import  logger
-from scripts_gdiff.selfsup.support.script_util_ss import (
+from guided_diffusion import dist_util, logger
+from guided_diffusion.script_util import (
     NUM_CLASSES,
     model_and_diffusion_defaults,
-    create_model_and_diffusion_ss,
+    classifier_defaults,
+    create_model_and_diffusion,
+    create_classifier,
     add_dict_to_argparser,
     args_to_dict,
-    simsiam_and_diffusion_defaults,
-    create_simsiam_selfsup,
-    simsiam_defaults,
 )
-from scripts_gdiff.selfsup.support import dist_util
 import datetime
 from PIL import Image
 import hfai.client
@@ -63,7 +60,7 @@ def main(local_rank):
     os.makedirs(output_images_folder, exist_ok=True)
 
     logger.log("creating model and diffusion...")
-    model, diffusion = create_model_and_diffusion_ss(
+    model, diffusion = create_model_and_diffusion(
         **args_to_dict(args, model_and_diffusion_defaults().keys())
     )
     model.load_state_dict(
@@ -74,47 +71,35 @@ def main(local_rank):
         model.convert_to_fp16()
     model.eval()
 
-    diffusion.k_step = args.k_step
-
 
     logger.log("loading classifier...")
-    classifier = create_simsiam_selfsup(**args_to_dict(args, simsiam_defaults().keys()))
-
-    if args.classifier_path == "simsiam":
-        classifier.load_state_dict(
-            dist_util.load_simsiam("eval_models/simsiam_0099.pth.tar")
-        )
-    else:
-        classifier.load_state_dict(
-            dist_util.load_state_dict(args.classifier_path, map_location="cpu")
-        )
+    classifier = create_classifier(**args_to_dict(args, classifier_defaults().keys()))
+    classifier.load_state_dict(
+        dist_util.load_state_dict(args.classifier_path, map_location="cpu")
+    )
     classifier.to(dist_util.dev())
-    # if args.classifier_use_fp16:
-    #     classifier.convert_to_fp16()
+    if args.classifier_use_fp16:
+        classifier.convert_to_fp16()
     classifier.eval()
-    classifier.sampling = True
-    classifier.release_z_grad = True
-    classifier.pred_prev = None
-    classifier.z_prev = None
 
-
-    def cond_fn(x, t, y=None, x0=None):
+    def cond_fn(x, t, y=None, x_den=None, x_den_div=None):
         assert y is not None
         with th.enable_grad():
+            # x_den_in = x_den.detach().requires_grad(True)
+            # x_den_div_in = x_den_div.detach().requires_grad(True)
+            # loss = similarity_loss(x_den_div_in, x_den_in)
             x_in = x.detach().requires_grad_(True)
-            if x0 is not None:
-                classifier.pred_prev, classifier.z_prev = classifier(x0, t)
-                classifier.pred_prev = classifier.pred_prev.detach()
-                classifier.z_prev = classifier.z_prev.detach()
-            p_x_in, z_x_in = classifier(x_in, t)
-            loss1 = similarity_loss(classifier.pred_prev, z_x_in)
-            loss2 = similarity_loss(p_x_in, classifier.z_prev)
-            loss = (loss1 + loss2) * 1/2
-            classifier.pred_prev = p_x_in.detach()
-            classifier.z_prev = z_x_in.detach()
-            return -th.autograd.grad(loss, x_in)[0] * args.classifier_scale
+            x_den_in = x_in + x_den
+            x_den_div_in = x_in + x_den_div
+            logits1 = classifier(x_den_in, t)
+            logits2 = classifier(x_den_div_in, t)
+            loss = similarity_loss(logits2, logits1)
+            # logits = classifier(x_in, t)
+            # log_probs = F.log_softmax(logits, dim=-1)
+            # selected = log_probs[range(len(logits)), y.view(-1)]
+            return th.autograd.grad(loss, x_in)[0] * args.classifier_scale
 
-    def model_fn(x, t, y=None, x0=None):
+    def model_fn(x, t, y=None, x_den=None, x_den_div=None):
         assert y is not None
         return model(x, t, y if args.class_cond else None)
 
@@ -149,7 +134,6 @@ def main(local_rank):
             low=0, high=num_class, size=(args.batch_size,), device=dist_util.dev()
         )
         model_kwargs["y"] = classes
-        model_kwargs["x0"] = None
         sample_fn = (
             diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop
         )
@@ -206,7 +190,14 @@ def main(local_rank):
     dist.barrier()
     logger.log("sampling complete")
 
-
+def similarity_loss(pred, target, mean=True):
+    pred_norm = th.nn.functional.normalize(pred, dim=1)
+    target_norm = th.nn.functional.normalize(target, dim=1)
+    cosine_sim = -(pred_norm * target_norm).sum(dim=1)
+    loss = cosine_sim
+    if mean:
+        loss = loss.mean()
+    return loss
 def create_argparser():
     defaults = dict(
         clip_denoised=True,
@@ -219,24 +210,16 @@ def create_argparser():
         save_imgs_for_visualization=True,
         fix_seed=False,
         specified_class=None,
-        logdir="",
-        k_step=5,
+        logdir=""
     )
     defaults.update(model_and_diffusion_defaults())
-    defaults.update(simsiam_defaults())
+    defaults.update(classifier_defaults())
     parser = argparse.ArgumentParser()
     add_dict_to_argparser(parser, defaults)
     return parser
 
-def similarity_loss(pred, target, mean=True):
-    pred_norm = th.nn.functional.normalize(pred, dim=1)
-    target_norm = th.nn.functional.normalize(target, dim=1)
-    cosine_sim = -(pred_norm * target_norm).sum(dim=1)
-    loss = cosine_sim
-    if mean:
-        loss = loss.mean()
-    return loss
+
 
 if __name__ == "__main__":
     ngpus = th.cuda.device_count()
-    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=False)
+    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=True)

@@ -12,6 +12,5 @@ def load_simsiam(file_path="eval_models/simsiam_0099.pth.tar"):
             new_key = None
 
         if new_key is not None:
-            print(f"{str_key} => {new_key}")
             state_dict[new_key] = state_dict.pop(str_key)
     return state_dict

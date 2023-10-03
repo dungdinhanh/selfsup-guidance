@@ -47,7 +47,7 @@ do
 for kstep in "${ksteps[@]}"
 do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet256_labeled.npz \
- runs/sampling_eds_negw/IMN256/conditional/scale${scale}_k${kstep}/reference/samples_50000x256x256x3.npz"
+ runs/sampling_simsiam/IMN256/conditional/scale${scale}_k${kstep}/reference/samples_50000x256x256x3.npz"
 echo ${cmd}
 eval ${cmd}
 done

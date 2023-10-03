@@ -21,43 +21,41 @@ cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
-scales=("0.1"  "0.5" "0.7")
-maxps=( "1000")
-wnegs=("0.5")
+scales=( "0.1"  "0.5" "0.7")
+ksteps=("10" )
 
 
 
 
 for scale in "${scales[@]}"
 do
-for maxp in "${maxps[@]}"
+for kstep in "${ksteps[@]}"
 do
-for wneg in "${wnegs[@]}"
-do
-cmd="python scripts_gdiff/selfsup/classifier_sample_ss_psimsiam.py $MODEL_FLAGS --classifier_scale ${scale}  \
---classifier_path eval_models/psimsiam_negw/psimsiam_maxp1000_negw0p5.pt \
- --model_path models/256x256_diffusion.pt $SAMPLE_FLAGS \
- --logdir runs/sampling_eds_negw/IMN256/conditional/scale${scale}_maxp${maxp}_wneg${wneg}/ "
+cmd="python scripts_gdiff/selfsup/classifier_sample_ss_psimsiam_x0pred2.py $MODEL_FLAGS --classifier_scale ${scale}  \
+--classifier_path simsiam \
+ --model_path models/256x256_diffusion.pt $SAMPLE_FLAGS --k_step ${kstep} \
+ --logdir runs/sampling_simsiam_x0pred/IMN256/conditional/scale${scale}_k${kstep}/ "
 echo ${cmd}
 eval ${cmd}
 done
 done
-done
+
 
 
 for scale in "${scales[@]}"
 do
-for maxp in "${maxps[@]}"
-do
-for wneg in "${wnegs[@]}"
+for kstep in "${ksteps[@]}"
 do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet256_labeled.npz \
- runs/sampling_eds_negw/IMN256/conditional/scale${scale}_maxp${maxp}_wneg${wneg}/reference/samples_50000x256x256x3.npz"
+runs/sampling_simsiam_x0pred/IMN256/conditional/scale${scale}_k${kstep}/reference/samples_50000x256x256x3.npz"
 echo ${cmd}
 eval ${cmd}
 done
 done
-done
+
+
+
+
 
 
 

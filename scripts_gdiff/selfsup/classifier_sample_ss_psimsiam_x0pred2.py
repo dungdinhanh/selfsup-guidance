@@ -107,9 +107,8 @@ def main(local_rank):
                 classifier.pred_prev = classifier.pred_prev.detach()
                 classifier.z_prev = classifier.z_prev.detach()
             p_x_in, z_x_in = classifier(x_in, t)
-            loss1 = similarity_loss(classifier.pred_prev, z_x_in)
-            loss2 = similarity_loss(p_x_in, classifier.z_prev)
-            loss = (loss1 + loss2) * 1/2
+            # loss1 = similarity_loss(classifier.pred_prev, z_x_in)
+            loss = similarity_loss(p_x_in, classifier.z_prev)
             classifier.pred_prev = p_x_in.detach()
             classifier.z_prev = z_x_in.detach()
             return -th.autograd.grad(loss, x_in)[0] * args.classifier_scale
