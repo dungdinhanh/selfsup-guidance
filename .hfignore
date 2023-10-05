@@ -129,3 +129,5 @@ eval_models/simsiam_0099.pth.tar
 classify_image_graph_def.pb
 evaluations/classify_image_graph_def.pb
 
+eval_models/psimsiam_negw
+

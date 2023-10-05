@@ -340,16 +340,20 @@ class GaussianDiffusionCon(SpacedDiffusion):
             denoised_fn=denoised_fn,
             model_kwargs=model_kwargs,
         )
-        self.t = t
+
+
         noise = th.randn_like(x)
         nonzero_mask = (
             (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
         )  # no noise when t == 0
+        noise_grad = nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
+        model_kwargs['x_div'] = noise_grad
+        model_kwargs['tor'] = t
         if cond_fn is not None:
             out["mean"] = self.condition_mean(
                 cond_fn, out, x, t, model_kwargs=model_kwargs
             )
-        sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
+        sample = out["mean"] + noise_grad
         return {"sample": sample, "pred_xstart": out["pred_xstart"]}
 
     def condition_mean_cons(self, cond_fn, p_mean_var, x, t, model_kwargs=None):
@@ -361,34 +365,16 @@ class GaussianDiffusionCon(SpacedDiffusion):
 
         This uses the conditioning strategy from Sohl-Dickstein et al. (2015).
         """
-        gradient = cond_fn(x, self._scale_timesteps(t), **model_kwargs)
         gradient_gen = _extract_into_tensor(self.posterior_mean_coef1, t, x.shape) * p_mean_var['pred_xstart']
+        model_kwargs['x_den'] = gradient_gen
+        model_kwargs['x_start'] = p_mean_var['pred_xstart']
 
-
-        del gradient_cls, gradient_gen, new_gradient_gen, new_gradient_cls
+        gradient = cond_fn(x, self._scale_timesteps(t), **model_kwargs)
+        new_mean = (
+                p_mean_var["mean"].float() + p_mean_var["variance"] * gradient.float()
+        )
         return new_mean
 
-    def project_conflict(self, grad1, grad2, shape):
-        new_grad1 = torch.flatten(grad1, start_dim=1)
-        new_grad2 = torch.flatten(grad2, start_dim=1)
-
-        # g1 * g2 --------------- (batchsize,)
-        g_1_g_2 = torch.sum(new_grad1 * new_grad2, dim=1)
-        g_1_g_2 = torch.clamp(g_1_g_2, max=0.0)
-
-        # ||g2||^2 ----------------- (batchsize,)
-        norm_g2 = new_grad2.norm(dim=1) **2
-        if torch.any(norm_g2 == 0.0):
-            return new_grad1.view(shape)
-
-        # (g1 * g2)/||g2||^2 ------------------- (batchsize,)
-        g12_o_normg2 = g_1_g_2/norm_g2
-        g12_o_normg2 = torch.unsqueeze(g12_o_normg2, dim=1)
-        # why zero has problem?
-        # g1
-        new_grad1 -= ((g12_o_normg2) * new_grad2)
-        new_grad1 = new_grad1.view(shape)
-        return new_grad1
 
     def condition_mean(self, cond_fn, *args, **kwargs):
         return self.condition_mean_cons(self._wrap_model(cond_fn), *args, **kwargs)

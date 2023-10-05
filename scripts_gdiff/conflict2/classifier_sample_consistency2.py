@@ -96,7 +96,7 @@ def main(local_rank):
             x_den_div_in = x_mean + x_den + x_div
             logits1 = classifier(x_den_in, t)
             logits2 = classifier(x_den_div_in, t)
-            loss = similarity_loss(logits2, logits1)
+            loss = similarity_loss(logits2, logits1.detach())
             # logits = classifier(x_in, t)
             # log_probs = F.log_softmax(logits, dim=-1)
             # selected = log_probs[range(len(logits)), y.view(-1)]
