@@ -86,11 +86,9 @@ def main(local_rank):
     classifier.eval()
 
     augmentation = [
-        transforms.RandomResizedCrop(args.image_size, scale=(0.2, 1.)),
         transforms.RandomApply([
             transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)  # not strengthened
-        ], p=0.8),
-        transforms.RandomGrayscale(p=0.2),
+        ], p=0.2),
         transforms.RandomHorizontalFlip()]
     transform_act = transforms.Compose(augmentation)
 
