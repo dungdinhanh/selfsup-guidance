@@ -109,18 +109,12 @@ def main(local_rank):
     list_logits = []
     count = 0
     while True:
-        logger.logkv("step", step + resume_step)
-        logger.logkv(
-            "samples",
-            (step + resume_step + 1) * args.batch_size * dist.get_world_size(),
-        )
 
         logits, rep = forward_backward_log(data_iter)
         count += rep.shape[0]
         list_reps.append(rep)
         list_logits.append(logits)
-        if not step % args.log_interval:
-            logger.dumpkvs()
+        print(count)
         if count >= args.num_samples:
             break
     reps = th.cat(list_reps).cpu().numpy()
