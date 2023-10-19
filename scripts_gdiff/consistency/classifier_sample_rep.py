@@ -226,7 +226,7 @@ def similarity_match(pred, target, mean=True):
     cosine_sim = (pred_norm * target_norm).sum(dim=1)
     loss = cosine_sim
     if mean:
-        loss = loss.mean()
+        loss = loss.sum()
     return loss
 
 if __name__ == "__main__":

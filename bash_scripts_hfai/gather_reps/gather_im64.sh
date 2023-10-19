@@ -14,7 +14,7 @@ echo ${cmd}
 eval ${cmd}
 
 
-cmd="python scripts_gdiff/consistency/classifier_gather_rep.py --data_dir path/to/imagenet --logdir runs/IM64/IM64classifier_training_info_4nodes/ \
+cmd="CUDA_VISIBLE_DEVICES=3 MASTER_PORT=6532 python scripts_gdiff/consistency/classifier_gather_rep.py --data_dir path/to/imagenet --logdir runs/IM64/IM64classifier_training_info_4nodes/ \
  $TRAIN_FLAGS $CLASSIFIER_FLAGS"
 echo ${cmd}
 eval ${cmd}
