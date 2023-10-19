@@ -103,6 +103,46 @@ class EncoderUNetModelRep(EncoderUNetModel):
             h = h.type(x.dtype)
             return self.out(h), h
 
+def create_classifier_and_diffusion_consistency(
+    image_size,
+    classifier_use_fp16,
+    classifier_width,
+    classifier_depth,
+    classifier_attention_resolutions,
+    classifier_use_scale_shift_norm,
+    classifier_resblock_updown,
+    classifier_pool,
+    learn_sigma,
+    diffusion_steps,
+    noise_schedule,
+    timestep_respacing,
+    use_kl,
+    predict_xstart,
+    rescale_timesteps,
+    rescale_learned_sigmas,
+):
+    classifier = create_classifier_consistency(
+        image_size,
+        classifier_use_fp16,
+        classifier_width,
+        classifier_depth,
+        classifier_attention_resolutions,
+        classifier_use_scale_shift_norm,
+        classifier_resblock_updown,
+        classifier_pool
+    )
+    diffusion = create_gaussian_diffusion(
+        steps=diffusion_steps,
+        learn_sigma=learn_sigma,
+        noise_schedule=noise_schedule,
+        use_kl=use_kl,
+        predict_xstart=predict_xstart,
+        rescale_timesteps=rescale_timesteps,
+        rescale_learned_sigmas=rescale_learned_sigmas,
+        timestep_respacing=timestep_respacing,
+    )
+    return classifier, diffusion
+
 
 
 def timestep_embedding(timesteps, dim, max_period=10000):
