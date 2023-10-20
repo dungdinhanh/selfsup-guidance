@@ -25,12 +25,32 @@ from scripts_gdiff.consistency.support.script_util_consistency import (
     add_dict_to_argparser,
     args_to_dict,
     classifier_and_diffusion_defaults,
-    create_classifier_and_diffusion_consistency,
+    create_classifier_and_diffusion,
 )
 from guided_diffusion.train_util import parse_resume_step_from_filename, log_loss_dict
 import hfai.client
 import numpy as np
 
+
+class FeatureHook():
+    def __init__(self, module):
+        self.hook = module.register_forward_hook(self.hook_fn)
+        self.feature_list = []
+        self.device_list = []
+
+    def hook_fn(self, module, input, output):
+        if th.is_tensor(input):
+            device = input.get_device()
+        elif isinstance(input, tuple):
+            device = input[0].get_device()
+        elif isinstance(input, list):
+            print(input)
+            exit(0)
+        self.device_list = device
+        self.feature_list = output
+
+    def close(self):
+        self.hook.remove()
 
 def main(local_rank):
     args = create_argparser().parse_args()
@@ -49,7 +69,7 @@ def main(local_rank):
         logger.configure(rank=dist.get_rank())
     logger.log("creating model and diffusion...")
 
-    model, diffusion = create_classifier_and_diffusion_consistency(
+    model, diffusion = create_classifier_and_diffusion(
         **args_to_dict(args, classifier_and_diffusion_defaults().keys())
     )
     model.to(dist_util.dev())
@@ -59,6 +79,36 @@ def main(local_rank):
         )
 
     resume_step = 0
+    # 417('out', Sequential(
+    #     (0): GroupNorm32(32, 512, eps=1e-05, affine=True)
+    # (1): SiLU()
+    # (2): AttentionPool2d(
+    #     (qkv_proj): Conv1d(512, 1536, kernel_size=(1,), stride=(1,))
+    # (c_proj): Conv1d(512, 1000, kernel_size=(1,), stride=(1,))
+    # (attention): QKVAttention()
+    # )
+    # ))
+    # 418('out.0', GroupNorm32(32, 512, eps=1e-05, affine=True))
+    # 419('out.1', SiLU())
+    # 420('out.2', AttentionPool2d(
+    #     (qkv_proj): Conv1d(512, 1536, kernel_size=(1,), stride=(1,))
+    # (c_proj): Conv1d(512, 1000, kernel_size=(1,), stride=(1,))
+    # (attention): QKVAttention()
+    # ))
+    # 421('out.2.qkv_proj', Conv1d(512, 1536, kernel_size=(1,), stride=(1,)))
+    # 422('out.2.c_proj', Conv1d(512, 1000, kernel_size=(1,), stride=(1,)))
+    # 423('out.2.attention', QKVAttention())
+    features = []
+    for index, (module, name) in enumerate(list(zip(model.modules(), model.named_modules()))):
+
+        if name[0] == "out.1":
+            features.append(FeatureHook(module))
+            print(name)
+        elif name[0] == "out.2.attention":
+            features.append(FeatureHook(module))
+            print(name)
+
+
 
     model.load_state_dict(
         dist_util.load_state_dict("models/64x64_classifier.pt", map_location="cpu"))
@@ -101,7 +151,8 @@ def main(local_rank):
         for i, (sub_batch, sub_labels, sub_t) in enumerate(
             split_microbatches(args.microbatch, batch, labels, t)
         ):
-            logits, rep = model(sub_batch, timesteps=sub_t)
+            logits = model(sub_batch, timesteps=sub_t)
+            rep = features[1].feature_list
         return logits.detach(), rep.detach()
 
 

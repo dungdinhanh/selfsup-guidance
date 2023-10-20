@@ -14,7 +14,7 @@ echo ${cmd}
 eval ${cmd}
 
 
-cmd="python scripts_gdiff/consistency/classifier_gather_rep.py --data_dir path/to/imagenet --logdir eval_models/imn64 \
+cmd="python scripts_gdiff/consistency/classifier_gather_rep2.py --data_dir path/to/imagenet --logdir eval_models/imn64 \
  $TRAIN_FLAGS $CLASSIFIER_FLAGS"
 echo ${cmd}
 eval ${cmd}

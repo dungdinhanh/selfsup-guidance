@@ -131,3 +131,6 @@ evaluations/classify_image_graph_def.pb
 
 eval_models/psimsiam_negw
 
+reference/VIRTUAL_lsun_bedroom256.npz
+reference/VIRTUAL_lsun_cat256.npz
+reference/VIRTUAL_lsun_horse256.npz
