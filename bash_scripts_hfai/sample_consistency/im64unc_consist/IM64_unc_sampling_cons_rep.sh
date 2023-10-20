@@ -24,7 +24,7 @@ cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
-scales=("0.5" "1.0" "2.0" "4.0")
+scales=( "2.0" "4.0")
 #scales=("0.5")
 
 
