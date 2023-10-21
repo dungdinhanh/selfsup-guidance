@@ -166,16 +166,16 @@ def main(local_rank):
         count += rep.shape[0]
         print(rep.shape)
         print(logits.shape)
-        list_reps.append(rep.cpu().numpy())
-        # list_logits.append(logits.cpu().numpy())
+        # list_reps.append(rep.cpu().numpy())
+        list_logits.append(logits.cpu().numpy())
         print(count)
         if count >= args.num_samples:
             break
-    reps   = np.concatenate(list_reps, axis=0)
-    reps   = reps[:args.num_samples]
-    # logits = np.concatenate(list_logits, axis=0)
-    # logits = logits[:args.num_samples]
-    np.savez(output_file, reps)
+    # reps   = np.concatenate(list_reps, axis=0)
+    # reps   = reps[:args.num_samples]
+    logits = np.concatenate(list_logits, axis=0)
+    logits = logits[:args.num_samples]
+    np.savez(output_file, logits)
 
     dist.barrier()
 
@@ -206,7 +206,7 @@ def create_argparser():
         eval_interval=5,
         save_interval=25000,
         logdir="eval_models/imn64",
-        num_samples=50000
+        num_samples=500000
     )
     defaults.update(classifier_and_diffusion_defaults())
     parser = argparse.ArgumentParser()
