@@ -135,5 +135,7 @@ reference/VIRTUAL_lsun_bedroom256.npz
 reference/VIRTUAL_lsun_cat256.npz
 reference/VIRTUAL_lsun_horse256.npz
 
-#eval_models/imn64
+eval_models/imn64
 eval_models/imn64/logs
+eval_models/imn256/
+eval_models/imn128/

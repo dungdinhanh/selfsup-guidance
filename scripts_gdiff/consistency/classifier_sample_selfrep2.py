@@ -121,9 +121,10 @@ def main(local_rank):
     #     transforms.RandomGrayscale(p=0.2),
     #     transforms.RandomHorizontalFlip()]
     # transform_act = transforms.Compose(augmentation)
-    features = np.load(args.features)['arr_0']
-    features_n = features.shape[0]
-
+    features_file = np.load(args.features)
+    features_n = features_file['arr_0'].shape[0]
+    features = features_file['arr_0']
+    labels_associated = features_file['arr_1']
     def cond_fn(x, t, y=None, s_features=None):
         assert y is not None
         with th.enable_grad():
@@ -131,12 +132,13 @@ def main(local_rank):
             logits = classifier(x_in, t)
 
 
-            sim_match = similarity_match(logits, s_features)
 
-            # log_probs = F.log_softmax(logits, dim=-1)
-            # selected = log_probs[range(len(logits)), y.view(-1)]
 
-            return th.autograd.grad(sim_match, x_in)[0] * args.classifier_scale
+            log_probs = F.log_softmax(logits, dim=-1)
+            softmax_features = F.softmax(s_features, dim=-1)
+            loss = (softmax_features * log_probs).sum(-1)
+
+            return th.autograd.grad(loss.sum(), x_in)[0] * args.classifier_scale
 
     def model_fn(x, t, y=None, s_features=None):
         assert y is not None
@@ -169,13 +171,16 @@ def main(local_rank):
         num_class = NUM_CLASSES
     while len(all_images) * args.batch_size < args.num_samples:
         model_kwargs = {}
-        classes = th.randint(
-            low=0, high=num_class, size=(args.batch_size,), device=dist_util.dev()
-        )
+        # classes = th.randint(
+        #     low=0, high=num_class, size=(args.batch_size,), device=dist_util.dev()
+        # )
         n = args.batch_size
 
         random_selected_indexes = np.random.randint(0, features_n, (n,), dtype=int)
         s_features = th.from_numpy(features[random_selected_indexes]).to(dist_util.dev())
+
+        classes = th.from_numpy(labels_associated[random_selected_indexes]).to(dist_util.dev())
+
         model_kwargs["y"] = classes
         model_kwargs["s_features"] = s_features
         sample_fn = (

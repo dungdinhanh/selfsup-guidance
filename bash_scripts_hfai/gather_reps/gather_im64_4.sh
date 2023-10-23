@@ -14,7 +14,7 @@ echo ${cmd}
 eval ${cmd}
 
 
-cmd="CUDA_VISIBLE_DEVICES=0 python scripts_gdiff/consistency/classifier_gather_rep3.py --data_dir path/to/imagenet --logdir eval_models/imn64 \
+cmd="CUDA_VISIBLE_DEVICES=0 python scripts_gdiff/consistency/classifier_gather_rep4.py --data_dir path/to/imagenet --logdir eval_models/imn64 \
  $TRAIN_FLAGS $CLASSIFIER_FLAGS"
 echo ${cmd}
 eval ${cmd}
