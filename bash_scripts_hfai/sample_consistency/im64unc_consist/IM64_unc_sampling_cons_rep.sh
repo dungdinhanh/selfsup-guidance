@@ -32,7 +32,7 @@ for scale in "${scales[@]}"
 do
 cmd="python scripts_gdiff/consistency/classifier_sample_rep2.py $MODEL_FLAGS --classifier_scale ${scale}  \
 --classifier_path models/64x64_classifier.pt --model_path models/64x64_diffusion_unc.pt $SAMPLE_FLAGS \
- --logdir runs/sampling_rep_attention/IMN64/unconditional/scale${scale}/ --classifier_depth 4"
+ --logdir runs/sampling_rep_attention3/IMN64/unconditional/scale${scale}/ --classifier_depth 4"
 echo ${cmd}
 eval ${cmd}
 done
@@ -40,7 +40,7 @@ done
 for scale in "${scales[@]}"
 do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet64_labeled.npz \
- runs/sampling_rep_attention/IMN64/unconditional/scale${scale}/reference/samples_50000x64x64x3.npz"
+ runs/sampling_rep_attention3/IMN64/unconditional/scale${scale}/reference/samples_50000x64x64x3.npz"
 echo ${cmd}
 eval ${cmd}
 done
