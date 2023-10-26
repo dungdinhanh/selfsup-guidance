@@ -62,7 +62,7 @@ def main(local_rank):
         args.logdir,
         "logs",
     )
-    output_file = os.path.join(args.logdir, "reps.npz")
+    output_file = os.path.join(args.logdir, "reps2.npz")
     if dist.get_rank() == 0:
         logger.configure(log_folder, rank=dist.get_rank())
     else:
@@ -111,7 +111,7 @@ def main(local_rank):
 
 
     model.load_state_dict(
-        dist_util.load_state_dict("models/64x64_classifier.pt", map_location="cpu"))
+        dist_util.load_state_dict(args.p_classifier, map_location="cpu"))
 
     # Needed for creating correct EMAs and fp16 parameters.
     dist_util.sync_params(model.parameters())
@@ -153,29 +153,35 @@ def main(local_rank):
         ):
             logits = model(sub_batch, timesteps=sub_t)
             rep = features[1].feature_list
-        return logits.detach(), rep.detach()
+        return logits.detach(), rep.detach(), labels.detach()
 
 
     data_iter = iter(data)
     list_reps = []
     list_logits = []
+    list_labels = []
     count = 0
     while True:
 
-        logits, rep = forward_backward_log(data_iter)
+        logits, rep, labels = forward_backward_log(data_iter)
         count += rep.shape[0]
-        print(rep.shape)
         print(logits.shape)
-        list_reps.append(rep.cpu().numpy())
-        # list_logits.append(logits.cpu().numpy())
+        print(labels.shape)
+        # list_reps.append(rep.cpu().numpy())
+        list_logits.append(logits.cpu().numpy())
+        list_labels.append(labels.cpu().numpy())
         print(count)
         if count >= args.num_samples:
             break
-    reps   = np.concatenate(list_reps, axis=0)
-    reps   = reps[:args.num_samples]
-    # logits = np.concatenate(list_logits, axis=0)
-    # logits = logits[:args.num_samples]
-    np.savez(output_file, reps)
+    # reps   = np.concatenate(list_reps, axis=0)
+    # reps   = reps[:args.num_samples]
+    logits = np.concatenate(list_logits, axis=0)
+    logits = logits[:args.num_samples]
+
+    labels = np.concatenate(list_labels, axis=0)
+    labels = labels[:args.num_samples]
+    print(labels.shape)
+    np.savez(output_file, logits, labels)
 
     dist.barrier()
 
@@ -206,7 +212,8 @@ def create_argparser():
         eval_interval=5,
         save_interval=25000,
         logdir="eval_models/imn64",
-        num_samples=50000
+        num_samples=500000,
+        p_classifier="models/64x64_classifier.pt"
     )
     defaults.update(classifier_and_diffusion_defaults())
     parser = argparse.ArgumentParser()
@@ -216,4 +223,4 @@ def create_argparser():
 
 if __name__ == "__main__":
     ngpus = th.cuda.device_count()
-    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=False)
+    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=True)
