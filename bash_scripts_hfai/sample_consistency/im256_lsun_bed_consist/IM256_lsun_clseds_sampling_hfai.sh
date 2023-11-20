@@ -24,9 +24,9 @@ scales=("0.1"  "0.5" "0.7")
 
 for scale in "${scales[@]}"
 do
-cmd="python scripts_gdiff/classifier_sample.py --classifier_scale ${scale}  \
+cmd="python scripts_gdiff/consistency/classifier_sample_selfrep2.py --classifier_scale ${scale}  \
 --classifier_path models/256x256_classifier.pt $MODEL_FLAGS --model_path models/lsun_bedroom.pt $SAMPLE_FLAGS\
- --logdir runs/sampling_LSUN_bedroom/IMN256/conditional/scale${scale}/ "
+ --logdir runs/sampling_LSUN_bedroom_kd/IMN256/conditional/scale${scale}/ --features eval_models/lsun_bed256/reps2.npz"
 echo ${cmd}
 eval ${cmd}
 done
@@ -34,7 +34,7 @@ done
 for scale in "${scales[@]}"
 do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_lsun_bedroom256.npz \
- runs/sampling_LSUN_bedroom/IMN256/conditional/scale${scale}/reference/samples_50000x256x256x3.npz"
+ runs/sampling_LSUN_bedroom_kd/IMN256/conditional/scale${scale}/reference/samples_50000x256x256x3.npz"
 echo ${cmd}
 eval ${cmd}
 done

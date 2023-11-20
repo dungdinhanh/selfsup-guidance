@@ -17,7 +17,7 @@ from scripts_gdiff.consistency.support.script_util_consistency import (
     NUM_CLASSES,
     model_and_diffusion_defaults,
     classifier_defaults,
-    create_model_and_diffusion,
+    # create_model_and_diffusion,
     create_classifier,
     add_dict_to_argparser,
     args_to_dict,
@@ -27,6 +27,7 @@ from PIL import Image
 import hfai.client
 from torchvision import utils
 import torchvision.transforms as transforms
+from guided_diffusion.script_util_mlt import create_model_and_diffusion_mlt2
 
 
 class FeatureHook():
@@ -81,7 +82,7 @@ def main(local_rank):
     os.makedirs(output_images_folder, exist_ok=True)
 
     logger.log("creating model and diffusion...")
-    model, diffusion = create_model_and_diffusion(
+    model, diffusion = create_model_and_diffusion_mlt2(
         **args_to_dict(args, model_and_diffusion_defaults().keys())
     )
     model.load_state_dict(
@@ -134,8 +135,8 @@ def main(local_rank):
 
 
 
-            log_probs = F.log_softmax(logits/args.temp, dim=-1)
-            softmax_features = F.softmax(s_features/args.temp, dim=-1)
+            log_probs = F.log_softmax(logits, dim=-1)
+            softmax_features = F.softmax(s_features, dim=-1)
             loss = (softmax_features * log_probs).sum(-1)
 
             return th.autograd.grad(loss.sum(), x_in)[0] * args.classifier_scale
@@ -253,8 +254,7 @@ def create_argparser():
         fix_seed=False,
         specified_class=None,
         logdir="",
-        features="eval_models/imn64/reps.npz",
-        temp=1.0
+        features="eval_models/imn64/reps.npz"
     )
     defaults.update(model_and_diffusion_defaults())
     defaults.update(classifier_defaults())

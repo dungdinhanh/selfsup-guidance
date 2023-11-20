@@ -13,7 +13,7 @@ import hfai.nccl.distributed as dist
 import torch.nn.functional as F
 import hfai
 from guided_diffusion import dist_util, logger
-from scripts_gdiff.consistency.support.script_util_consistency import (
+from eds_guided_diffusion.script_util import (
     NUM_CLASSES,
     model_and_diffusion_defaults,
     classifier_defaults,
@@ -134,11 +134,27 @@ def main(local_rank):
 
 
 
-            log_probs = F.log_softmax(logits/args.temp, dim=-1)
-            softmax_features = F.softmax(s_features/args.temp, dim=-1)
-            loss = (softmax_features * log_probs).sum(-1)
+            log_probs = F.log_softmax(logits, dim=-1)
+            softmax_features = F.softmax(s_features, dim=-1)
+            selected = (softmax_features * log_probs).sum(-1)
 
-            return th.autograd.grad(loss.sum(), x_in)[0] * args.classifier_scale
+            cond_grad = th.autograd.grad(selected.sum(), x_in)[0]
+
+        guidance = {
+            'gradient': cond_grad,
+            'scale': args.classifier_scale
+        }
+
+        # a few lines of code to apply EDS
+        if args.use_entropy_scale:
+            with th.no_grad():
+                probs = F.softmax(logits, dim=-1)  # (B, C)
+                entropy = (-log_probs * probs).sum(dim=-1)  # (B,)
+                entropy_scale = 1.0 / (entropy / np.log(NUM_CLASSES))  # (B,)
+                entropy_scale = entropy_scale.reshape(-1, 1, 1, 1).repeat(1, *cond_grad[0].shape)
+                guidance['scale'] = guidance['scale'] * entropy_scale
+
+        return guidance
 
     def model_fn(x, t, y=None, s_features=None):
         assert y is not None
@@ -186,7 +202,7 @@ def main(local_rank):
         sample_fn = (
             diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop
         )
-        sample = sample_fn(
+        out = sample_fn(
             model_fn,
             (args.batch_size, img_channels, args.image_size, args.image_size),
             clip_denoised=args.clip_denoised,
@@ -194,6 +210,7 @@ def main(local_rank):
             cond_fn=cond_fn,
             device=dist_util.dev(),
         )
+        sample= out['sample']
 
         if args.save_imgs_for_visualization and dist.get_rank() == 0 and (
                 len(all_images) // dist.get_world_size()) < 10:
@@ -254,7 +271,7 @@ def create_argparser():
         specified_class=None,
         logdir="",
         features="eval_models/imn64/reps.npz",
-        temp=1.0
+        use_entropy_scale=True,
     )
     defaults.update(model_and_diffusion_defaults())
     defaults.update(classifier_defaults())

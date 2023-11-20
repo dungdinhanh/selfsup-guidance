@@ -1,6 +1,5 @@
 """
-Like image_sample.py, but use a noisy image classifier to guide the sampling
-process towards more realistic images.
+Using off-the-shelf classifier to guide the diffusion sampling
 """
 
 import argparse
@@ -8,12 +7,18 @@ import os
 
 import numpy as np
 import torch as th
-# import torch.distributed as dist
 import hfai.nccl.distributed as dist
 import torch.nn.functional as F
 import hfai
-from guided_diffusion import dist_util, logger
-from scripts_gdiff.consistency.support.script_util_consistency import (
+from PIL import Image
+import time
+import numpy as np
+import csv
+import functools
+import torchvision.models as models
+
+from off_guided_diffusion import dist_util, logger
+from off_guided_diffusion.script_util import (
     NUM_CLASSES,
     model_and_diffusion_defaults,
     classifier_defaults,
@@ -22,32 +27,7 @@ from scripts_gdiff.consistency.support.script_util_consistency import (
     add_dict_to_argparser,
     args_to_dict,
 )
-import datetime
-from PIL import Image
-import hfai.client
-from torchvision import utils
-import torchvision.transforms as transforms
 
-
-class FeatureHook():
-    def __init__(self, module):
-        self.hook = module.register_forward_hook(self.hook_fn)
-        self.feature_list = []
-        self.device_list = []
-
-    def hook_fn(self, module, input, output):
-        if th.is_tensor(input):
-            device = input.get_device()
-        elif isinstance(input, tuple):
-            device = input[0].get_device()
-        elif isinstance(input, list):
-            print(input)
-            exit(0)
-        self.device_list = device
-        self.feature_list = output
-
-    def close(self):
-        self.hook.remove()
 
 def main(local_rank):
     args = create_argparser().parse_args()
@@ -92,57 +72,74 @@ def main(local_rank):
         model.convert_to_fp16()
     model.eval()
 
-
+    assert args.classifier_type in ['finetune', 'resnet50', 'resnet101']
     logger.log("loading classifier...")
-    classifier = create_classifier(**args_to_dict(args, classifier_defaults().keys()))
-    classifier.load_state_dict(
-        dist_util.load_state_dict(args.classifier_path, map_location="cpu")
-    )
-    classifier.to(dist_util.dev())
-    if args.classifier_use_fp16:
-        classifier.convert_to_fp16()
-    classifier.eval()
-    # features = []
-    # for index, (module, name) in enumerate(list(zip(classifier.modules(), classifier.named_modules()))):
-    #     # print(index, name)
-    #     if name[0] == "out.1":
-    #         features.append(FeatureHook(module))
-    #         print(name)
-    #     elif name[0] == "out.2.attention":
-    #         features.append(FeatureHook(module))
-    #         print(name)
+    if args.classifier_type == 'finetune':
+        classifier = create_classifier(**args_to_dict(args, classifier_defaults().keys()))
+        classifier.load_state_dict(
+            dist_util.load_state_dict(args.classifier_path, map_location="cpu")
+        )
+        classifier.to(dist_util.dev())
+        if args.classifier_use_fp16:
+            classifier.convert_to_fp16()
+        classifier.eval()
+    else:
+        if args.classifier_type == 'resnet50':
+            resnet_address = 'eval_models/resnet50-19c8e357.pth'
+            resnet = models.resnet50()
+        else:
+            resnet_address = 'eval_models/resnet101-5d3b4d8f.pth'
+            resnet = models.resnet101()
+        for param in resnet.parameters():
+            param.required_grad = False
+        resnet.load_state_dict(th.load(resnet_address))
+        resnet.eval()
+        resnet.cuda()
 
+        # replace ReLU with Softplus activation function
+        if (args.softplus_beta < np.inf):
+            for name, module in resnet.named_children():
+                if isinstance(module, th.nn.ReLU):
+                    resnet._modules[name] = th.nn.Softplus(beta=args.softplus_beta)
+                if name in ['layer1','layer2','layer3','layer4']:
+                    for sub_name, sub_module in module.named_children():
+                        if isinstance(sub_module, models.resnet.Bottleneck):
+                            for subsub_name, subsub_module in sub_module.named_children():
+                                if isinstance(subsub_module, th.nn.ReLU):
+                                    resnet._modules[name]._modules[sub_name]._modules[subsub_name] = th.nn.Softplus(beta=args.softplus_beta)
 
-    # augmentation = [
-    #     transforms.RandomResizedCrop(args.image_size, scale=(0.2, 1.)),
-    #     transforms.RandomApply([
-    #         transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)  # not strengthened
-    #     ], p=0.8),
-    #     transforms.RandomGrayscale(p=0.2),
-    #     transforms.RandomHorizontalFlip()]
-    # transform_act = transforms.Compose(augmentation)
-    features_file = np.load(args.features)
-    features_n = features_file['arr_0'].shape[0]
-    features = features_file['arr_0']
-    labels_associated = features_file['arr_1']
-    def cond_fn(x, t, y=None, s_features=None):
-        assert y is not None
-        with th.enable_grad():
-            x_in = x.detach().requires_grad_(True)
-            logits = classifier(x_in, t)
+    args.classifier_scale = float(args.classifier_scale)
+    args.joint_temperature = float(args.joint_temperature)
+    args.margin_temperature_discount = float(args.margin_temperature_discount)
+    args.gamma_factor = float(args.gamma_factor)
 
+    if dist.get_rank() == 0:
+        print('args:', args)
 
-
-
-            log_probs = F.log_softmax(logits/args.temp, dim=-1)
-            softmax_features = F.softmax(s_features/args.temp, dim=-1)
-            loss = (softmax_features * log_probs).sum(-1)
-
-            return th.autograd.grad(loss.sum(), x_in)[0] * args.classifier_scale
-
-    def model_fn(x, t, y=None, s_features=None):
+    def model_fn(x, t, y=None):
         assert y is not None
         return model(x, t, y if args.class_cond else None)
+
+    # use off-the-shelf classifier gradient for guided sampling
+
+
+
+    def design_cond_fn(inputs, t, y=None):
+        assert y is not None
+        with th.enable_grad():
+            x = inputs[0]
+            pred_xstart = inputs[1]
+            # off-the-shelf ResNet guided
+            pred_xstart = pred_xstart.detach().requires_grad_(True)
+            # resnet classifier
+            logits = resnet(pred_xstart)
+            # temperature
+            temperature1 = args.joint_temperature
+            temperature2 = temperature1 * args.margin_temperature_discount
+            numerator = th.exp(logits*temperature1)[range(len(logits)), y.view(-1)].unsqueeze(1)
+            denominator2 = th.exp(logits*temperature2).sum(1, keepdims=True)
+            selected = th.log(numerator / denominator2)
+            return th.autograd.grad(selected.sum(), pred_xstart)[0] * args.classifier_scale
 
     logger.log("Looking for previous file")
     checkpoint = os.path.join(output_images_folder, "samples_last.npz")
@@ -150,6 +147,8 @@ def main(local_rank):
     os.makedirs(vis_images_folder, exist_ok=True)
     final_file = os.path.join(output_images_folder,
                               f"samples_{args.num_samples}x{args.image_size}x{args.image_size}x3.npz")
+
+
     if os.path.isfile(final_file):
         dist.barrier()
         logger.log("sampling complete")
@@ -171,41 +170,26 @@ def main(local_rank):
         num_class = NUM_CLASSES
     while len(all_images) * args.batch_size < args.num_samples:
         model_kwargs = {}
-        # classes = th.randint(
-        #     low=0, high=num_class, size=(args.batch_size,), device=dist_util.dev()
-        # )
-        n = args.batch_size
-
-        random_selected_indexes = np.random.randint(0, features_n, (n,), dtype=int)
-        s_features = th.from_numpy(features[random_selected_indexes]).to(dist_util.dev())
-
-        classes = th.from_numpy(labels_associated[random_selected_indexes]).to(dist_util.dev())
+        classes = th.randint(
+            low=0, high=num_class, size=(args.batch_size,), device=dist_util.dev()
+        )
+        if args.fix_class:
+            classes = th.ones(size=classes.shape, dtype=int, device=dist_util.dev()) * args.fix_class_index
 
         model_kwargs["y"] = classes
-        model_kwargs["s_features"] = s_features
         sample_fn = (
             diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop
         )
+        # classifier guidance
         sample = sample_fn(
             model_fn,
-            (args.batch_size, img_channels, args.image_size, args.image_size),
+            (args.batch_size, 3, args.image_size, args.image_size),
+            gamma_factor=args.gamma_factor,
             clip_denoised=args.clip_denoised,
             model_kwargs=model_kwargs,
-            cond_fn=cond_fn,
+            cond_fn=design_cond_fn,
             device=dist_util.dev(),
         )
-
-        if args.save_imgs_for_visualization and dist.get_rank() == 0 and (
-                len(all_images) // dist.get_world_size()) < 10:
-            save_img_dir = vis_images_folder
-            utils.save_image(
-                sample.clamp(-1, 1),
-                os.path.join(save_img_dir, "samples_{}.png".format(len(all_images))),
-                nrow=4,
-                normalize=True,
-                range=(-1, 1),
-            )
-
         sample = ((sample + 1) * 127.5).clamp(0, 255).to(th.uint8)
         sample = sample.permute(0, 2, 3, 1)
         sample = sample.contiguous()
@@ -243,18 +227,22 @@ def main(local_rank):
 def create_argparser():
     defaults = dict(
         clip_denoised=True,
-        num_samples=50000,
+        num_samples=10000,
+        log_dir=None,
+        fix_class=False,
+        fix_class_index=0,
         batch_size=16,
         use_ddim=False,
         model_path="",
         classifier_path="",
         classifier_scale=1.0,
-        save_imgs_for_visualization=True,
-        fix_seed=False,
-        specified_class=None,
-        logdir="",
-        features="eval_models/imn64/reps.npz",
-        temp=1.0
+        classifier_type='resnet101',
+        softplus_beta=np.inf,
+        joint_temperature=1.0,
+        margin_temperature_discount=1.0,
+        gamma_factor=0.0,
+        logdir="runs",
+        fix_seed=False
     )
     defaults.update(model_and_diffusion_defaults())
     defaults.update(classifier_defaults())
@@ -262,14 +250,6 @@ def create_argparser():
     add_dict_to_argparser(parser, defaults)
     return parser
 
-def similarity_match(pred, target, mean=True):
-    pred_norm = th.nn.functional.normalize(pred, dim=1)
-    target_norm = th.nn.functional.normalize(target, dim=1)
-    cosine_sim = (pred_norm * target_norm).sum(dim=1)
-    loss = cosine_sim
-    if mean:
-        loss = loss.sum()
-    return loss
 
 if __name__ == "__main__":
     ngpus = th.cuda.device_count()

@@ -12,13 +12,14 @@ import torch as th
 import hfai.nccl.distributed as dist
 import torch.nn.functional as F
 import hfai
-from guided_diffusion import dist_util, logger
-from scripts_gdiff.consistency.support.script_util_consistency import (
+from guided_diffusion import logger
+from scripts_gdiff.selfsup.support import dist_util
+from scripts_gdiff.selfsup.support.script_util_ss  import (
     NUM_CLASSES,
     model_and_diffusion_defaults,
-    classifier_defaults,
+    simsiam_defaults,
     create_model_and_diffusion,
-    create_classifier,
+    create_simsiam_selfsup,
     add_dict_to_argparser,
     args_to_dict,
 )
@@ -27,6 +28,28 @@ from PIL import Image
 import hfai.client
 from torchvision import utils
 import torchvision.transforms as transforms
+
+
+def center_crop_arr(images, image_size):
+    # We are not on a new enough PIL to support the `reducing_gap`
+    # argument, which uses BOX downsampling at powers of two first.
+    # Thus, we do it by hand to improve downsample quality.
+    y_size = images.shape[1]
+    x_size = images.shape[2]
+    crop_y = (y_size - image_size) // 2
+    crop_x = (x_size - image_size) // 2
+    return images[:, crop_y : crop_y + image_size, crop_x : crop_x + image_size]
+
+def custom_normalize(images, mean, std):
+    # Check if the input tensor has the same number of channels as the mean and std
+    if images.size(1) != len(mean) or images.size(1) != len(std):
+        raise ValueError("The number of channels in the input tensor must match the length of mean and std.")
+    images = images.to(th.float)
+    # Normalize the tensor
+    for c in range(images.size(1)):
+        images[:, c, :, :] = (images[:, c, :, :] - mean[c]) / std[c]
+
+    return images
 
 
 class FeatureHook():
@@ -94,53 +117,40 @@ def main(local_rank):
 
 
     logger.log("loading classifier...")
-    classifier = create_classifier(**args_to_dict(args, classifier_defaults().keys()))
+    classifier = create_simsiam_selfsup(**args_to_dict(args, simsiam_defaults().keys()))
     classifier.load_state_dict(
-        dist_util.load_state_dict(args.classifier_path, map_location="cpu")
+        dist_util.load_simsiam(args.classifier_path)
     )
     classifier.to(dist_util.dev())
-    if args.classifier_use_fp16:
-        classifier.convert_to_fp16()
+    # if args.classifier_use_fp16:
+    #     classifier.convert_to_fp16()
     classifier.eval()
-    # features = []
-    # for index, (module, name) in enumerate(list(zip(classifier.modules(), classifier.named_modules()))):
-    #     # print(index, name)
-    #     if name[0] == "out.1":
-    #         features.append(FeatureHook(module))
-    #         print(name)
-    #     elif name[0] == "out.2.attention":
-    #         features.append(FeatureHook(module))
-    #         print(name)
+    classifier.sampling=True
 
-
-    # augmentation = [
-    #     transforms.RandomResizedCrop(args.image_size, scale=(0.2, 1.)),
-    #     transforms.RandomApply([
-    #         transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)  # not strengthened
-    #     ], p=0.8),
-    #     transforms.RandomGrayscale(p=0.2),
-    #     transforms.RandomHorizontalFlip()]
-    # transform_act = transforms.Compose(augmentation)
     features_file = np.load(args.features)
     features_n = features_file['arr_0'].shape[0]
-    features = features_file['arr_0']
-    labels_associated = features_file['arr_1']
-    def cond_fn(x, t, y=None, s_features=None):
+    features_p = features_file['arr_0']
+    features_z = features_file['arr_1']
+    labels_associated = features_file['arr_2']
+    mean_imn = [0.485, 0.456, 0.406]
+    std_imn = [0.229, 0.224, 0.225]
+    # pad = th.nn.ZeroPad2d((256-224)//2)
+    def cond_fn(x, t, y=None, p_features=None, z_features=None):
         assert y is not None
         with th.enable_grad():
             x_in = x.detach().requires_grad_(True)
-            logits = classifier(x_in, t)
 
+            x_in_r = ((x_in + 1) * 127.).clamp(0, 255)/255.0
+            x_in_r = center_crop_arr(x_in_r, 224)
+            x_in_r = custom_normalize(x_in_r, mean_imn, std_imn)
+            p_x_in, z_x_in = classifier(x_in_r, t)
+            match1 = similarity_match(p_features.detach(), z_x_in)
+            match2 = similarity_match(p_x_in, z_features.detach())
+            match = (match1 + match2) * 1/2
 
+            return th.autograd.grad(match.sum(), x_in)[0] * args.classifier_scale
 
-
-            log_probs = F.log_softmax(logits/args.temp, dim=-1)
-            softmax_features = F.softmax(s_features/args.temp, dim=-1)
-            loss = (softmax_features * log_probs).sum(-1)
-
-            return th.autograd.grad(loss.sum(), x_in)[0] * args.classifier_scale
-
-    def model_fn(x, t, y=None, s_features=None):
+    def model_fn(x, t, y=None, p_features=None, z_features=None):
         assert y is not None
         return model(x, t, y if args.class_cond else None)
 
@@ -177,12 +187,14 @@ def main(local_rank):
         n = args.batch_size
 
         random_selected_indexes = np.random.randint(0, features_n, (n,), dtype=int)
-        s_features = th.from_numpy(features[random_selected_indexes]).to(dist_util.dev())
-
+        p_features = th.from_numpy(features_p[random_selected_indexes]).to(dist_util.dev())
+        z_features = th.from_numpy(features_z[random_selected_indexes]).to(dist_util.dev())
         classes = th.from_numpy(labels_associated[random_selected_indexes]).to(dist_util.dev())
 
         model_kwargs["y"] = classes
-        model_kwargs["s_features"] = s_features
+        model_kwargs["p_features"] = p_features
+        model_kwargs["z_features"] = z_features
+
         sample_fn = (
             diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop
         )
@@ -257,7 +269,7 @@ def create_argparser():
         temp=1.0
     )
     defaults.update(model_and_diffusion_defaults())
-    defaults.update(classifier_defaults())
+    defaults.update(simsiam_defaults())
     parser = argparse.ArgumentParser()
     add_dict_to_argparser(parser, defaults)
     return parser
