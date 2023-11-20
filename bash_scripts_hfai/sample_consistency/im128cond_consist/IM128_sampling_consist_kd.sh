@@ -26,7 +26,7 @@ do
 cmd="python scripts_gdiff/consistency/classifier_sample_selfrep2.py $MODEL_FLAGS --classifier_scale ${scale} \
  --classifier_path models/128x128_classifier.pt \
 --model_path models/128x128_diffusion.pt $SAMPLE_FLAGS \
---logdir runs/sampling_selfrep_kd/IMN128/conditional/scale${scale}/ --features eval_models/imn128/reps2.npz"
+--logdir runs/sampling_selfrep_kd2/IMN128/conditional/scale${scale}/ --features eval_models/imn128/reps2.npz"
 echo ${cmd}
 eval ${cmd}
 done
@@ -36,7 +36,7 @@ done
 for scale in "${scales[@]}"
 do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet128_labeled.npz \
- runs/sampling_selfrep_kd/IMN128/conditional/scale${scale}/reference/samples_50000x128x128x3.npz"
+ runs/sampling_selfrep_kd2/IMN128/conditional/scale${scale}/reference/samples_50000x128x128x3.npz"
 echo ${cmd}
 eval ${cmd}
 done

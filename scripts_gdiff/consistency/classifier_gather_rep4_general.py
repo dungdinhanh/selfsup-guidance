@@ -17,43 +17,20 @@ from hfai.nn.parallel import DistributedDataParallel as DDP
 import hfai
 from torch.optim import AdamW
 
-from guided_diffusion import logger
-from scripts_gdiff.selfsup.support import dist_util
+from guided_diffusion import dist_util, logger
 from guided_diffusion.fp16_util import MixedPrecisionTrainer
-from guided_diffusion.image_datasets import load_data_imagenet_hfai
+from guided_diffusion.image_datasets import load_data
 from guided_diffusion.resample import create_named_schedule_sampler
-from scripts_gdiff.selfsup.support.script_util_ss import (
+from scripts_gdiff.consistency.support.script_util_consistency import (
     add_dict_to_argparser,
     args_to_dict,
     classifier_and_diffusion_defaults,
-    create_simsiam_and_diffusion,
-    simsiam_and_diffusion_defaults
+    create_classifier_and_diffusion,
 )
 from guided_diffusion.train_util import parse_resume_step_from_filename, log_loss_dict
 import hfai.client
 import numpy as np
-import torchvision.transforms as transforms
 
-def center_crop_arr(images, image_size):
-    # We are not on a new enough PIL to support the `reducing_gap`
-    # argument, which uses BOX downsampling at powers of two first.
-    # Thus, we do it by hand to improve downsample quality.
-    y_size = images.shape[2]
-    x_size = images.shape[3]
-    crop_y = (y_size - image_size) // 2
-    crop_x = (x_size - image_size) // 2
-    return images[:, : ,crop_y : crop_y + image_size, crop_x : crop_x + image_size]
-
-def custom_normalize(images, mean, std):
-    # Check if the input tensor has the same number of channels as the mean and std
-    if images.size(1) != len(mean) or images.size(1) != len(std):
-        raise ValueError("The number of channels in the input tensor must match the length of mean and std.")
-    images = images.to(th.float)
-    # Normalize the tensor
-    for c in range(images.size(1)):
-        images[:, c, :, :] = (images[:, c, :, :] - mean[c]) / std[c]
-
-    return images
 
 class FeatureHook():
     def __init__(self, module):
@@ -85,15 +62,15 @@ def main(local_rank):
         args.logdir,
         "logs",
     )
-    output_file = os.path.join(args.logdir, "reps3.npz")
+    output_file = os.path.join(args.logdir, "reps2.npz")
     if dist.get_rank() == 0:
         logger.configure(log_folder, rank=dist.get_rank())
     else:
         logger.configure(rank=dist.get_rank())
     logger.log("creating model and diffusion...")
 
-    model, diffusion = create_simsiam_and_diffusion(
-        **args_to_dict(args, simsiam_and_diffusion_defaults().keys())
+    model, diffusion = create_classifier_and_diffusion(
+        **args_to_dict(args, classifier_and_diffusion_defaults().keys())
     )
     model.to(dist_util.dev())
     if args.noised:
@@ -102,10 +79,39 @@ def main(local_rank):
         )
 
     resume_step = 0
+    # 417('out', Sequential(
+    #     (0): GroupNorm32(32, 512, eps=1e-05, affine=True)
+    # (1): SiLU()
+    # (2): AttentionPool2d(
+    #     (qkv_proj): Conv1d(512, 1536, kernel_size=(1,), stride=(1,))
+    # (c_proj): Conv1d(512, 1000, kernel_size=(1,), stride=(1,))
+    # (attention): QKVAttention()
+    # )
+    # ))
+    # 418('out.0', GroupNorm32(32, 512, eps=1e-05, affine=True))
+    # 419('out.1', SiLU())
+    # 420('out.2', AttentionPool2d(
+    #     (qkv_proj): Conv1d(512, 1536, kernel_size=(1,), stride=(1,))
+    # (c_proj): Conv1d(512, 1000, kernel_size=(1,), stride=(1,))
+    # (attention): QKVAttention()
+    # ))
+    # 421('out.2.qkv_proj', Conv1d(512, 1536, kernel_size=(1,), stride=(1,)))
+    # 422('out.2.c_proj', Conv1d(512, 1000, kernel_size=(1,), stride=(1,)))
+    # 423('out.2.attention', QKVAttention())
+    features = []
+    for index, (module, name) in enumerate(list(zip(model.modules(), model.named_modules()))):
+
+        if name[0] == "out.1":
+            features.append(FeatureHook(module))
+            print(name)
+        elif name[0] == "out.2.attention":
+            features.append(FeatureHook(module))
+            print(name)
+
 
 
     model.load_state_dict(
-        dist_util.load_simsiam(args.p_classifier))
+        dist_util.load_state_dict(args.p_classifier, map_location="cpu"))
 
     # Needed for creating correct EMAs and fp16 parameters.
     dist_util.sync_params(model.parameters())
@@ -122,8 +128,10 @@ def main(local_rank):
 
     logger.log("creating data loader...")
 
-    data = load_data_imagenet_hfai(train=True, image_size=args.image_size,
-                                   batch_size=args.batch_size, random_crop=True)
+    data = load_data(data_dir=args.data_dir,
+        batch_size=args.batch_size,
+        image_size=args.image_size,
+        class_cond=True)
     if args.val_data_dir:
         val_data = load_data_imagenet_hfai(train=False, image_size=args.image_size,
                                            batch_size=args.batch_size, random_crop=True)
@@ -131,19 +139,13 @@ def main(local_rank):
         val_data = None
 
     logger.log("training classifier model...")
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])
-    augmentation = [
-        normalize]
-    transform_act = transforms.Compose(augmentation)
-    mean_imn = [0.485, 0.456, 0.406]
-    std_imn = [0.229, 0.224, 0.225]
+
     def forward_backward_log(data_loader, prefix="train"):
         model.eval()
         batch, extra = next(data_loader)
         labels = extra["y"].to(dist_util.dev())
 
-        # batch = batch.to(dist_util.dev())
+        batch = batch.to(dist_util.dev())
         # Noisy images
 
         t = th.zeros(batch.shape[0], dtype=th.long, device=dist_util.dev())
@@ -151,46 +153,37 @@ def main(local_rank):
         for i, (sub_batch, sub_labels, sub_t) in enumerate(
             split_microbatches(args.microbatch, batch, labels, t)
         ):
-            sub_batch = ((sub_batch + 1) * 127.5).clamp(0, 255)/255.0
-            # sub_batch = sub_batch.permute(0, 2, 3, 1)
-            # sub_batch = sub_batch.contiguous().cpu().numpy()
-            sub_batch = center_crop_arr(sub_batch, args.image_size)
-            sub_batch = custom_normalize(sub_batch, mean_imn, std_imn)
-            sub_batch = sub_batch.to(dist_util.dev())
-            p_logits, z_logits = model.module.forward_1view(sub_batch.detach())
-        return p_logits.detach(), z_logits.detach(), labels.detach()
+            logits = model(sub_batch, timesteps=sub_t)
+            rep = features[1].feature_list
+        return logits.detach(), rep.detach(), labels.detach()
 
 
     data_iter = iter(data)
     list_reps = []
-    list_p_logits = []
-    list_z_logits = []
+    list_logits = []
     list_labels = []
     count = 0
     while True:
 
-        p_logits, z_logits, labels = forward_backward_log(data_iter)
-        count += p_logits.shape[0]
-
+        logits, rep, labels = forward_backward_log(data_iter)
+        count += rep.shape[0]
+        print(logits.shape)
+        print(labels.shape)
         # list_reps.append(rep.cpu().numpy())
-        list_p_logits.append(p_logits.cpu().numpy())
-        list_z_logits.append(z_logits.cpu().numpy())
+        list_logits.append(logits.cpu().numpy())
         list_labels.append(labels.cpu().numpy())
-        print(count, flush=True)
+        print(count)
         if count >= args.num_samples:
             break
     # reps   = np.concatenate(list_reps, axis=0)
     # reps   = reps[:args.num_samples]
-    p_logits = np.concatenate(list_p_logits, axis=0)
-    p_logits = p_logits[:args.num_samples]
-
-    z_logits = np.concatenate(list_z_logits, axis=0)
-    z_logits = z_logits[:args.num_samples]
+    logits = np.concatenate(list_logits, axis=0)
+    logits = logits[:args.num_samples]
 
     labels = np.concatenate(list_labels, axis=0)
     labels = labels[:args.num_samples]
-
-    np.savez(output_file, p_logits, z_logits, labels)
+    print(labels.shape)
+    np.savez(output_file, logits, labels)
 
     dist.barrier()
 
@@ -220,12 +213,11 @@ def create_argparser():
         log_interval=500,
         eval_interval=5,
         save_interval=25000,
-        logdir="eval_models/imn256_ss/",
+        logdir="eval_models/imn64",
         num_samples=500000,
-        p_classifier="models/64x64_classifier.pt",
-        image_size=128
+        p_classifier="models/64x64_classifier.pt"
     )
-    defaults.update(simsiam_and_diffusion_defaults())
+    defaults.update(classifier_and_diffusion_defaults())
     parser = argparse.ArgumentParser()
     add_dict_to_argparser(parser, defaults)
     return parser

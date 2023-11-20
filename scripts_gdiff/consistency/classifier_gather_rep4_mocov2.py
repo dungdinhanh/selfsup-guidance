@@ -42,10 +42,12 @@ def center_crop_arr(images, image_size):
     x_size = images.shape[3]
     crop_y = (y_size - image_size) // 2
     crop_x = (x_size - image_size) // 2
-    return images[:, crop_y : crop_y + image_size, crop_x : crop_x + image_size]
+    return images[:, : ,crop_y : crop_y + image_size, crop_x : crop_x + image_size]
 
 def custom_normalize(images, mean, std):
     # Check if the input tensor has the same number of channels as the mean and std
+    # print(images.shape)
+    # exit(0)
     if images.size(1) != len(mean) or images.size(1) != len(std):
         raise ValueError("The number of channels in the input tensor must match the length of mean and std.")
     images = images.to(th.float)
