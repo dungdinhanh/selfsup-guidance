@@ -18,7 +18,7 @@ cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
-scales=( "13.0" "14.0" "15.0" "16.0" )
+scales=( "14.0" "15.0" "16.0" )
 jointtemps=( "0.3")
 margintemps=( "0.3" )
 
@@ -32,8 +32,8 @@ do
 cmd="python script_odiff/mocov2_meanclose_cls_sup_sample_transform.py $MODEL_FLAGS --classifier_scale ${scale} \
  --classifier_type mocov2 \
 --model_path models/128x128_diffusion.pt $SAMPLE_FLAGS --joint_temperature ${jt} --margin_temperature_discount ${mt}  \
---logdir runs/sampling_ots/IMN128/conditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_meanclose/ \
---features eval_models/imn128_mocov2/reps3.npz"
+--logdir runs/sampling_ots/IMN128/conditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_meanclose_cls/ \
+--features eval_models/imn128_mocov2/reps3.npz --save_imgs_for_visualization True"
 echo ${cmd}
 eval ${cmd}
 done
@@ -49,7 +49,7 @@ do
 for mt in "${margintemps[@]}"
 do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet128_labeled.npz \
- runs/sampling_ots/IMN128/conditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_meanclose/reference/samples_50000x128x128x3.npz"
+ runs/sampling_ots/IMN128/conditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_meanclose_cls/reference/samples_50000x128x128x3.npz"
 echo ${cmd}
 eval ${cmd}
 done
