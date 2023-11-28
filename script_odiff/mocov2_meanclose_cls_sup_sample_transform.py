@@ -251,6 +251,10 @@ def main(local_rank):
         random_selected_indexes = np.random.randint(0, features_n, (n,), dtype=int)
         p_features = th.from_numpy(features_p[random_selected_indexes]).to(dist_util.dev())
         classes = th.from_numpy(labels_associated[random_selected_indexes]).to(dist_util.dev())
+        mask_features = th.zeros_like(p_features)
+        mask_features[classes] = 1.0 * (1/args.k_closest)
+        
+        print(mask_features)
 
         model_kwargs["y"] = classes
         model_kwargs["p_features"] = p_features
