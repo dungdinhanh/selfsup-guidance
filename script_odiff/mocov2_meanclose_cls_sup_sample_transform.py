@@ -160,7 +160,7 @@ def main(local_rank):
     if dist.get_rank() == 0:
         print('args:', args)
 
-    def model_fn(x, t, y=None, p_features=None):
+    def model_fn(x, t, y=None, p_features=None, mask=None):
         assert y is not None
         return model(x, t, y if args.class_cond else None)
 
@@ -187,11 +187,8 @@ def main(local_rank):
     labels_associated = features_file['arr_1']
 
 
-    # features_n = features_file['arr_0'].shape[0]
-    # features_p = features_file['arr_0']
-    # features_z = features_file['arr_1']
-    # labels_associated = features_file['arr_2']
-    def design_cond_fn(inputs, t, y=None, p_features=None):
+
+    def design_cond_fn(inputs, t, y=None, p_features=None, mask=None):
         assert y is not None
         with th.enable_grad():
             x = inputs[0]
@@ -206,7 +203,8 @@ def main(local_rank):
 
             # resnet classifier
             p_x_0 = resnet(pred_xstart_r)
-            match1 = similarity_match(p_x_0, p_features.detach())
+            p_x_0_norm = th.nn.functional.normalize(p_x_0, dim=1)
+            match1 = th.matmul(p_x_0_norm, p_features.T.detach()) * mask
 
             match = match1
             # # temperature
@@ -249,15 +247,20 @@ def main(local_rank):
         n = args.batch_size
 
         random_selected_indexes = np.random.randint(0, features_n, (n,), dtype=int)
-        p_features = th.from_numpy(features_p[random_selected_indexes]).to(dist_util.dev())
+        p_features = th.from_numpy(features_p).to(dist_util.dev())
+        p_features = th.nn.functional.normalize(p_features, dim=1)
         classes = th.from_numpy(labels_associated[random_selected_indexes]).to(dist_util.dev())
-        mask_features = th.zeros_like(p_features)
-        mask_features[classes] = 1.0 * (1/args.k_closest)
-        
-        print(mask_features)
+        mask_features = th.zeros(n, p_features.shape[0]).to(dist_util.dev())
+        indexes = th.arange(0, n, device=dist_util.dev())
+        for index_k in range(args.k_closest):
+            mask_features[indexes, args.k_closest * classes + index_k] = 1.0 * (1/args.k_closest)
+        # test_mask = mask_features.cpu().numpy()
+        # print(th.sum(mask_features, dim=1))
+        # exit(0)
 
         model_kwargs["y"] = classes
         model_kwargs["p_features"] = p_features
+        model_kwargs["mask"] = mask_features
 
         sample_fn = (
             diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop
@@ -409,4 +412,4 @@ def process_features(features_p, labels):
 
 if __name__ == "__main__":
     ngpus = th.cuda.device_count()
-    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=True)
+    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=False)
