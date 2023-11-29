@@ -180,7 +180,7 @@ def main(local_rank):
         np.savez(features_mean_sup_file, features_p, labels_associated)
         logger.log(f"saving {features_mean_sup_file}")
 
-
+    logger.log(f"reading from {features_mean_sup_file}")
     features_file = np.load(features_mean_sup_file)
     features_n = features_file['arr_0'].shape[0]
     features_p = features_file['arr_0']
