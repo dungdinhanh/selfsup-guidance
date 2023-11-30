@@ -30,6 +30,10 @@ from off_guided_diffusion.script_util import (
 )
 from torchvision import utils
 
+from off_guided_diffusion.script_util_mlt import create_model_and_diffusion_cdiv2
+
+# from guided_diffusion.script_util_mlt import create_model_and_diffusion_cdiv2
+
 def center_crop_arr(images, image_size):
     # We are not on a new enough PIL to support the `reducing_gap`
     # argument, which uses BOX downsampling at powers of two first.
@@ -85,7 +89,7 @@ def main(local_rank):
     os.makedirs(output_images_folder, exist_ok=True)
 
     logger.log("creating model and diffusion...")
-    model, diffusion = create_model_and_diffusion(
+    model, diffusion = create_model_and_diffusion_cdiv2(
         **args_to_dict(args, model_and_diffusion_defaults().keys())
     )
     model.load_state_dict(
@@ -391,4 +395,4 @@ def get_mean_closest_sup(features_p, labels, k=5):
 
 if __name__ == "__main__":
     ngpus = th.cuda.device_count()
-    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=True)
+    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=False)
