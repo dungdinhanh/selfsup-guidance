@@ -12,9 +12,25 @@ from .nn import mean_flat
 from .losses import normal_kl, discretized_gaussian_log_likelihood
 from off_guided_diffusion.gaussian_diffusion import *
 import torch
+from off_guided_diffusion.respace import *
 
 
-class GaussianDiffusionMLTCDiv2(GaussianDiffusion):
+class GaussianDiffusionMLTCDiv2(SpacedDiffusion):
+
+    def __init__(self,
+        use_timesteps,
+        *,
+        betas,
+        model_mean_type,
+        model_var_type,
+        loss_type,
+        rescale_timesteps=False,
+    ):
+        super(GaussianDiffusionMLTCDiv2, self).__init__(use_timesteps=use_timesteps, betas=betas,
+                                                   model_mean_type=model_mean_type,
+                                                   model_var_type=model_var_type,
+                                                   loss_type=loss_type,
+                                                   rescale_timesteps=rescale_timesteps)
 
     def p_sample(
         self,
@@ -61,6 +77,13 @@ class GaussianDiffusionMLTCDiv2(GaussianDiffusion):
         )  # no noise when t == 0
 
         if cond_fn is not None:
+            pred_xstart = out['pred_xstart']
+            variance = out['variance'][0][0][0][0].item()
+            self.max_variance = max(self.max_variance, variance)
+            # adding sin timely-decay factor to the guidance schedule
+            current_time = t[0].item()
+            add_value = max(np.sin((current_time / self.num_timesteps) * np.pi) * self.max_variance * gamma_factor, 0.0)
+
             out["mean"], gradient_div = self.condition_mean(
                 cond_fn, out, x, t, nonzero_mask, model_kwargs=model_kwargs
             )
@@ -79,7 +102,7 @@ class GaussianDiffusionMLTCDiv2(GaussianDiffusion):
 
         This uses the conditioning strategy from Sohl-Dickstein et al. (2015).
         """
-        gradient = cond_fn(x, self._scale_timesteps(t), **model_kwargs)
+        gradient = cond_fn([x, p_mean_var['pred_xstart']], self._scale_timesteps(t), **model_kwargs)
         gradient_cls = p_mean_var["variance"] * gradient.float()
         gradient_gen = _extract_into_tensor(self.posterior_mean_coef1, t, x.shape) * p_mean_var['pred_xstart']
 
