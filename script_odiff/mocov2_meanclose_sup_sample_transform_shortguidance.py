@@ -391,4 +391,4 @@ def get_mean_closest_sup(features_p, labels, k=5):
 
 if __name__ == "__main__":
     ngpus = th.cuda.device_count()
-    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=True)
+    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=False)
