@@ -24,6 +24,7 @@ echo ${cmd}
 eval ${cmd}
 
 scales=( "5.0" "6.0" "7.0" "8.0" "9.0" "10.0")
+scales=( "9.0" "10.0")
 #scales=( "1.0"  )
 jointtemps=( "0.3")
 margintemps=( "0.3" )
