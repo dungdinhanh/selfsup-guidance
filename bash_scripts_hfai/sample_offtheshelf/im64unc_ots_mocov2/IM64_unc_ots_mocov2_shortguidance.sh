@@ -16,15 +16,19 @@ MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond False --diffusion_step
 # --learn_sigma True --noise_schedule cosine --num_channels 192 --num_head_channels 64 --num_res_blocks 3 \
 #  --resblock_updown True --use_new_attention_order True --use_fp16 True --use_scale_shift_norm True"
 cmd="cd ../../../"
-#echo ${cmd}
-#eval ${cmd}
+echo ${cmd}
+eval ${cmd}
 
 cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
 #scales=( "7.0" "8.0"  )
+<<<<<<< HEAD
 scales=( "1.0" "5.0" "10.0" "15.0" "20.0"  )
+=======
+scales=( "1.0" "5.0" "10.0"   )
+>>>>>>> 0c17828d019d6d91164963aec7d3c7ef7bb7af2f
 #scales=( "1.0"  )
 jointtemps=( "0.3")
 margintemps=( "0.3" )
