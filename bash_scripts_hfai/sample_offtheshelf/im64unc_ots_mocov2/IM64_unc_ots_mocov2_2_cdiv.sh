@@ -23,7 +23,9 @@ cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
+
 scales=(  "9.0" "10.0" )
+
 #scales=( "1.0"  )
 jointtemps=( "0.3")
 margintemps=( "0.3" )
