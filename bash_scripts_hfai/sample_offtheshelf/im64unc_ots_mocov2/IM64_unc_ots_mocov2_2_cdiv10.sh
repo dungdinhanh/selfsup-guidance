@@ -1,8 +1,8 @@
 #!/bin/bash
 
-export NCCL_P2P_DISABLE=1
+#export NCCL_P2P_DISABLE=1
 
-SAMPLE_FLAGS="--batch_size 240 --num_samples 50000 --timestep_respacing 250"
+SAMPLE_FLAGS="--batch_size 250 --num_samples 50000 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 2 --num_samples 4 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 32 --num_samples 50000 --timestep_respacing 250"
 #TRAIN_FLAGS="--lr 1e-4 --batch_size 128 --schedule_sampler loss-second-moment"
@@ -23,8 +23,7 @@ cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
-#scales=( "7.0" "8.0"  )
-scales=( "1.0" "5.0" "10.0"   )
+scales=( "8.0" "9.0" )
 #scales=( "1.0"  )
 jointtemps=( "0.3")
 margintemps=( "0.3" )
@@ -36,9 +35,9 @@ for jt in "${jointtemps[@]}"
 do
 for mt in "${margintemps[@]}"
 do
-cmd="python script_odiff/mocov2_meanclose_sup_sample_transform_shortguidance.py $MODEL_FLAGS --classifier_scale ${scale}  \
+cmd="python script_odiff/mocov2_meanclose_sup_sample_transform_cdiv.py $MODEL_FLAGS --classifier_scale ${scale}  \
 --classifier_type mocov2 --model_path models/64x64_diffusion_unc.pt $SAMPLE_FLAGS --joint_temperature ${jt} \
- --logdir runs/sampling_ots/IMN64/unconditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_shg/ \
+ --logdir runs/sampling_ots/IMN64/unconditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_meanclose_cdiv/ \
  --features eval_models/imn64_mocov2/reps3.npz --save_imgs_for_visualization True"
 echo ${cmd}
 eval ${cmd}
@@ -53,7 +52,7 @@ do
 for mt in "${margintemps[@]}"
 do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet64_labeled.npz \
- runs/sampling_ots/IMN64/unconditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_shg/reference/samples_50000x64x64x3.npz"
+ runs/sampling_ots/IMN64/unconditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_meanclose_cdiv/reference/samples_50000x64x64x3.npz"
 echo ${cmd}
 eval ${cmd}
 done
