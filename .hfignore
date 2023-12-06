@@ -146,3 +146,4 @@ eval_models/imn128_simsiam/
 eval_models/moco_v2_800ep_pretrain.pth.tar
 eval_models/imn128_mocov2/
 eval_models/imn256_mocov2/
+eval_models/imn64_mocov2/

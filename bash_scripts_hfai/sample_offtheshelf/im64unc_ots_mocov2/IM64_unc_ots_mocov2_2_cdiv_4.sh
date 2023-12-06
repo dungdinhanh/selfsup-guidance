@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#export NCCL_P2P_DISABLE=1
+export NCCL_P2P_DISABLE=1
 
 SAMPLE_FLAGS="--batch_size 240 --num_samples 50000 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 2 --num_samples 4 --timestep_respacing 250"
@@ -23,9 +23,8 @@ cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
-
-scales=(  "9.0" "10.0" )
-
+#scales=( "0.5" "1.0" "2.0" "3.0" "4.0" "12.0" "14.0" )
+scales=( "0.5" "1.0" "2.0" "3.0" "4.0"  "12.0")
 #scales=( "1.0"  )
 jointtemps=( "0.3")
 margintemps=( "0.3" )
