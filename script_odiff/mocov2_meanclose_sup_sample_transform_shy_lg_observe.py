@@ -23,16 +23,13 @@ from off_guided_diffusion.script_util import (
     NUM_CLASSES,
     model_and_diffusion_defaults,
     classifier_defaults,
-    create_model_and_diffusion,
+
     create_classifier,
     add_dict_to_argparser,
     args_to_dict,
 )
 from torchvision import utils
-
-from off_guided_diffusion.script_util_mlt import create_model_and_diffusion_cdiv2
-
-# from guided_diffusion.script_util_mlt import create_model_and_diffusion_cdiv2
+from off_guided_diffusion.script_util_ss import create_model_and_diffusion_shgx0_lg
 
 def center_crop_arr(images, image_size):
     # We are not on a new enough PIL to support the `reducing_gap`
@@ -89,7 +86,7 @@ def main(local_rank):
     os.makedirs(output_images_folder, exist_ok=True)
 
     logger.log("creating model and diffusion...")
-    model, diffusion = create_model_and_diffusion_cdiv2(
+    model, diffusion = create_model_and_diffusion_shgx0_lg(
         **args_to_dict(args, model_and_diffusion_defaults().keys())
     )
     model.load_state_dict(
@@ -191,41 +188,44 @@ def main(local_rank):
 
     labels_associated = features_file['arr_1']
 
-
+    list_match_x0_y = []
+    list_match_xt_y = []
+    list_match_x0_xt = []
     # features_n = features_file['arr_0'].shape[0]
     # features_p = features_file['arr_0']
     # features_z = features_file['arr_1']
     # labels_associated = features_file['arr_2']
-    list_match_x0_y = []
-    list_match_xt_y = []
-    list_match_x0_xt = []
     def design_cond_fn(inputs, t, y=None, p_features=None):
         assert y is not None
         with th.enable_grad():
             x = inputs[0]
             pred_xstart = inputs[1]
             # off-the-shelf ResNet guided
+            x = x.detach().requires_grad_(True)
+
             pred_xstart = pred_xstart.detach().requires_grad_(True)
 
             pred_xstart_r = ((pred_xstart + 1) * 127.).clamp(0, 255)/255.0
             pred_xstart_r = center_crop_arr(pred_xstart_r, args.image_size)
             pred_xstart_r = custom_normalize(pred_xstart_r, mean_imn, std_imn)
 
-            x = x.detach().requires_grad_(True)
-
-            x_r = ((x + 1) * 127.).clamp(0, 255) / 255.0
+            x_r = ((x + 1) * 127.).clamp(0, 255)/255.0
             x_r = center_crop_arr(x_r, args.image_size)
             x_r = custom_normalize(x_r, mean_imn, std_imn)
+
+
             # resnet classifier
             p_x_0 = resnet(pred_xstart_r)
-            p_x_t = resnet(x_r)
-            match_x0_y = similarity_match(p_x_0, p_features.detach(), False)
-            match_x0_xt = similarity_match(p_x_0, p_x_t.detach(), False)
-            match_xt_y = similarity_match(p_x_t, p_features.detach(), False)
+            match1 = similarity_match(p_x_0, p_features.detach(), False)
 
+            p_x_r = resnet(x_r)
+            match2 = similarity_match(p_x_r, p_features.detach(), False)
 
+            match = match1
 
-            match = match_x0_y
+            match_x0_y = match1
+            match_x0_xt = similarity_match(p_x_0, p_x_r.detach(), False)
+            match_xt_y = match2
 
             list_match_x0_y.append(match_x0_y.mean().item())
             list_match_x0_xt.append(match_x0_xt.mean().item())
@@ -236,7 +236,7 @@ def main(local_rank):
             # numerator = th.exp(logits*temperature1)[range(len(logits)), y.view(-1)].unsqueeze(1)
             # denominator2 = th.exp(logits*temperature2).sum(1, keepdims=True)
             # selected = th.log(numerator / denominator2)
-            return th.autograd.grad(match.sum(), pred_xstart_r)[0] * args.classifier_scale
+            return th.autograd.grad(match1.sum(), pred_xstart_r)[0] * args.classifier_scale, th.autograd.grad(match2.sum(), x_r)[0] * args.classifier_scale_shg
 
     logger.log("Looking for previous file")
     checkpoint = os.path.join(output_images_folder, "samples_last.npz")
@@ -318,7 +318,7 @@ def main(local_rank):
             if hfai.client.receive_suspend_command():
                 print("Receive suspend - good luck next run ^^")
                 hfai.client.go_suspend()
-            logger.log(f"created {len(all_images) * args.batch_size} samples _ to {checkpoint}")
+            logger.log(f"created {len(all_images) * args.batch_size} samples")
             np.savez(checkpoint, np.stack(all_images), np.stack(all_labels))
 
     arr = np.concatenate(all_images, axis=0)
@@ -369,6 +369,7 @@ def create_argparser():
         features="eval_models/imn128_mocov2/reps3.npz",
         save_imgs_for_visualization=False,
         k_closest=5,
+        classifier_scale_shg=1.0
     )
     defaults.update(model_and_diffusion_defaults())
     defaults.update(simsiam_defaults())
@@ -422,4 +423,4 @@ def get_mean_closest_sup(features_p, labels, k=5):
 
 if __name__ == "__main__":
     ngpus = th.cuda.device_count()
-    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=False)
+    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=True)

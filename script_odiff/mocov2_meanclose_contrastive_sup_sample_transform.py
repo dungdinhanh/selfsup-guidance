@@ -30,10 +30,6 @@ from off_guided_diffusion.script_util import (
 )
 from torchvision import utils
 
-from off_guided_diffusion.script_util_mlt import create_model_and_diffusion_cdiv2
-
-# from guided_diffusion.script_util_mlt import create_model_and_diffusion_cdiv2
-
 def center_crop_arr(images, image_size):
     # We are not on a new enough PIL to support the `reducing_gap`
     # argument, which uses BOX downsampling at powers of two first.
@@ -89,7 +85,7 @@ def main(local_rank):
     os.makedirs(output_images_folder, exist_ok=True)
 
     logger.log("creating model and diffusion...")
-    model, diffusion = create_model_and_diffusion_cdiv2(
+    model, diffusion = create_model_and_diffusion(
         **args_to_dict(args, model_and_diffusion_defaults().keys())
     )
     model.load_state_dict(
@@ -174,13 +170,13 @@ def main(local_rank):
 
     # features loading
     features_folder = os.path.dirname(args.features)
-    features_mean_sup_file = os.path.join(features_folder, f"reps3_mean_sup_closest{args.k_closest}_set.npz")
+    features_mean_sup_file = os.path.join(features_folder, f"reps3_mean_sup_set.npz")
     if not os.path.isfile(features_mean_sup_file):
         features_file = np.load(args.features)
         # features_n = features_file['arr_0'].shape[0]
         features_p = features_file['arr_0']
         labels_associated = features_file['arr_1']
-        features_p, labels_associated = get_mean_closest_sup(features_p, labels_associated, k=args.k_closest)
+        features_p, labels_associated = get_mean_closest_sup(features_p, labels_associated)
         np.savez(features_mean_sup_file, features_p, labels_associated)
         logger.log(f"saving {features_mean_sup_file}")
 
@@ -196,9 +192,6 @@ def main(local_rank):
     # features_p = features_file['arr_0']
     # features_z = features_file['arr_1']
     # labels_associated = features_file['arr_2']
-    list_match_x0_y = []
-    list_match_xt_y = []
-    list_match_x0_xt = []
     def design_cond_fn(inputs, t, y=None, p_features=None):
         assert y is not None
         with th.enable_grad():
@@ -211,32 +204,24 @@ def main(local_rank):
             pred_xstart_r = center_crop_arr(pred_xstart_r, args.image_size)
             pred_xstart_r = custom_normalize(pred_xstart_r, mean_imn, std_imn)
 
-            x = x.detach().requires_grad_(True)
 
-            x_r = ((x + 1) * 127.).clamp(0, 255) / 255.0
-            x_r = center_crop_arr(x_r, args.image_size)
-            x_r = custom_normalize(x_r, mean_imn, std_imn)
             # resnet classifier
             p_x_0 = resnet(pred_xstart_r)
-            p_x_t = resnet(x_r)
-            match_x0_y = similarity_match(p_x_0, p_features.detach(), False)
-            match_x0_xt = similarity_match(p_x_0, p_x_t.detach(), False)
-            match_xt_y = similarity_match(p_x_t, p_features.detach(), False)
+            match1 = similarity_match(p_x_0, p_features.detach())
 
-
-
-            match = match_x0_y
-
-            list_match_x0_y.append(match_x0_y.mean().item())
-            list_match_x0_xt.append(match_x0_xt.mean().item())
-            list_match_xt_y.append(match_xt_y.mean().item())
+            logits = match1
+            temperature1 = args.joint_temperature
+            temperature2 = temperature1 * args.margin_temperature_discount
+            numerator = th.exp(logits * temperature1)[range(len(logits)), y.view(-1)].unsqueeze(1)
+            denominator2 = th.exp(logits * temperature2).sum(1, keepdims=True)
+            selected = th.log(numerator / denominator2)
             # # temperature
             # temperature1 = args.joint_temperature
             # temperature2 = temperature1 * args.margin_temperature_discount
             # numerator = th.exp(logits*temperature1)[range(len(logits)), y.view(-1)].unsqueeze(1)
             # denominator2 = th.exp(logits*temperature2).sum(1, keepdims=True)
             # selected = th.log(numerator / denominator2)
-            return th.autograd.grad(match.sum(), pred_xstart_r)[0] * args.classifier_scale
+            return th.autograd.grad(selected.sum(), pred_xstart_r)[0] * args.classifier_scale
 
     logger.log("Looking for previous file")
     checkpoint = os.path.join(output_images_folder, "samples_last.npz")
@@ -270,7 +255,7 @@ def main(local_rank):
         n = args.batch_size
 
         random_selected_indexes = np.random.randint(0, features_n, (n,), dtype=int)
-        p_features = th.from_numpy(features_p[random_selected_indexes]).to(dist_util.dev())
+        p_features = th.from_numpy(features_p).to(dist_util.dev())
         classes = th.from_numpy(labels_associated[random_selected_indexes]).to(dist_util.dev())
 
         model_kwargs["y"] = classes
@@ -318,30 +303,19 @@ def main(local_rank):
             if hfai.client.receive_suspend_command():
                 print("Receive suspend - good luck next run ^^")
                 hfai.client.go_suspend()
-            logger.log(f"created {len(all_images) * args.batch_size} samples _ to {checkpoint}")
+            logger.log(f"created {len(all_images) * args.batch_size} samples")
             np.savez(checkpoint, np.stack(all_images), np.stack(all_labels))
 
     arr = np.concatenate(all_images, axis=0)
     arr = arr[: args.num_samples]
     label_arr = np.concatenate(all_labels, axis=0)
     label_arr = label_arr[: args.num_samples]
-
-    list_match_x0_y = np.asarray(list_match_x0_y)
-    list_match_xt_y = np.asarray(list_match_xt_y)
-    list_match_x0_xt = np.asarray(list_match_x0_xt)
-
     if dist.get_rank() == 0:
         shape_str = "x".join([str(x) for x in arr.shape])
         out_path = os.path.join(output_images_folder, f"samples_{shape_str}.npz")
         logger.log(f"saving to {out_path}")
         np.savez(out_path, arr, label_arr)
         os.remove(checkpoint)
-
-        match_path = os.path.join(output_images_folder, f"matches.npz")
-
-        np.savez(out_path, arr, label_arr)
-        np.savez(match_path, list_match_x0_y, list_match_x0_xt, list_match_xt_y)
-
 
     dist.barrier()
     logger.log("sampling complete")
@@ -376,10 +350,11 @@ def create_argparser():
     add_dict_to_argparser(parser, defaults)
     return parser
 
-def similarity_match(pred, target, mean=True):
+def similarity_match(pred, target, mean=False):
     pred_norm = th.nn.functional.normalize(pred, dim=1)
     target_norm = th.nn.functional.normalize(target, dim=1)
-    cosine_sim = (pred_norm * target_norm).sum(dim=1)
+    # cosine_sim = (pred_norm * target_norm).sum(dim=1)
+    cosine_sim = th.matmul(pred_norm, target_norm.T)
     loss = cosine_sim
     if mean:
         loss = loss.sum()
@@ -399,7 +374,7 @@ def find_closest_set(mean_vector, vectors, k=5):
     indexes_sorted = np.argsort(list_distances)
     return vectors[indexes_sorted[:k]], indexes_sorted[:k]
 
-def get_mean_closest_sup(features_p, labels, k=5):
+def get_mean_closest_sup(features_p, labels):
     n = features_p.shape[0]
     dict_p_classes = {}
     p_mean_vectors = []
@@ -413,11 +388,11 @@ def get_mean_closest_sup(features_p, labels, k=5):
     for key in dict_p_classes.keys():
         p_vectors = np.stack(dict_p_classes[key])
         p_mean = np.mean(p_vectors, axis=0)
-        labels_vectors.append(np.asarray([key] * k))
-        p_closest_vectors, indexes = find_closest_set(p_mean, p_vectors, k)
+        labels_vectors.append(np.asarray([key]))
+        p_closest_vectors = p_mean
         p_mean_vectors.append(p_closest_vectors)
 
-    return np.concatenate(p_mean_vectors), np.concatenate(labels_vectors)
+    return np.stack(p_mean_vectors), np.concatenate(labels_vectors)
 
 
 if __name__ == "__main__":
