@@ -54,7 +54,7 @@ do
 for mt in "${margintemps[@]}"
 do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet64_labeled.npz \
- runs/sampling_ots/IMN64/unconditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_meanclose/reference/samples_50000x64x64x3.npz"
+ runs/sampling_ots/IMN64/unconditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_meanclose_sup_contrastive/reference/samples_50000x64x64x3.npz"
 echo ${cmd}
 eval ${cmd}
 done
