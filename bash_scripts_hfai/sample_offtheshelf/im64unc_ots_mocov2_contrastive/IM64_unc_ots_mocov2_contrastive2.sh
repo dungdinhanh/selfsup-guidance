@@ -27,8 +27,8 @@ eval ${cmd}
 scales=( "6.0" "8.0" "10.0" "12.0" "14.0" )
 #scales=( "10.0"  )
 #scales=( "1.0"  )
-jointtemps=( "0.5" "0.7" "0.8" "1.0")
-margintemps=( "0.3" )
+jointtemps=( "0.3")
+margintemps=( "0.5" "0.7" "1.0"  )
 
 
 for scale in "${scales[@]}"
