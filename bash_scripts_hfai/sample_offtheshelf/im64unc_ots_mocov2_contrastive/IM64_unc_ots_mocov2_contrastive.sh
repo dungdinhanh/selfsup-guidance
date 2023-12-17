@@ -1,8 +1,8 @@
 #!/bin/bash
 
-export NCCL_P2P_DISABLE=1
+#export NCCL_P2P_DISABLE=1
 
-SAMPLE_FLAGS="--batch_size 200 --num_samples 50000 --timestep_respacing 250"
+SAMPLE_FLAGS="--batch_size 250 --num_samples 50000 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 2 --num_samples 4 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 2 --num_samples 4 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 32 --num_samples 50000 --timestep_respacing 250"
@@ -55,8 +55,8 @@ for mt in "${margintemps[@]}"
 do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet64_labeled.npz \
  runs/sampling_ots/IMN64/unconditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_meanclose/reference/samples_50000x64x64x3.npz"
-echo ${cmd}
-eval ${cmd}
+#echo ${cmd}
+#eval ${cmd}
 done
 done
 done
