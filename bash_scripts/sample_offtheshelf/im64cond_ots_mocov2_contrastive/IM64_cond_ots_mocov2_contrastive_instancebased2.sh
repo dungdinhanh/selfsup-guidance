@@ -2,7 +2,7 @@
 
 export NCCL_P2P_DISABLE=1
 
-SAMPLE_FLAGS="--batch_size 200 --num_samples 50000 --timestep_respacing 250"
+SAMPLE_FLAGS="--batch_size 240 --num_samples 50000 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 2 --num_samples 4 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 2 --num_samples 4 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 32 --num_samples 50000 --timestep_respacing 250"
