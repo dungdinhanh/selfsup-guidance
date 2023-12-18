@@ -264,7 +264,7 @@ def main(local_rank):
 
         model_kwargs["y"] = classes
         model_kwargs["p_features"] = p_features
-        model_kwargs["selected_indexes"] = random_selected_indexes
+        model_kwargs["selected_indexes"] = th.from_numpy(random_selected_indexes).to(dist_util.dev())
 
         sample_fn = (
             diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop
