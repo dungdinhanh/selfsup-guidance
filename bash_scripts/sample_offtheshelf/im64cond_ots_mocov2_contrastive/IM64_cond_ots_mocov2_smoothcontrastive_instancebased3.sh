@@ -24,11 +24,9 @@ cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
-<<<<<<< HEAD
+
 scales=( "0.001" "0.005")
-=======
-scales=( "15.0" "16.0" "18.0" )
->>>>>>> 34bfe988ec538e3b2422775fe0d58ad0312f19b9
+
 #scales=( "10.0"  )
 #scales=( "1.0"  )
 jointtemps=( "0.3")

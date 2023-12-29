@@ -215,7 +215,7 @@ class CLIPModelContrastive:
         self.s[:, 1:]= self.s[:, 1:] - delta_s
         sum_delta = torch.sum(delta_s, dim = 1)
         self.s[:, 0] += sum_delta
-        print(torch.sum(self.s, dim=1))
+
 
 
 @attr.s
