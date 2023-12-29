@@ -5,8 +5,8 @@ export NCCL_P2P_DISABLE=1
 
 MODEL_FLAGS=""
 
-SAMPLE_FLAGS="--batch_size 50 --num_samples 30000 --timestep_respacing 250"
-#SAMPLE_FLAGS="--batch_size 2 --num_samples 4 --timestep_respacing 250"
+SAMPLE_FLAGS="--batch_size 70 --num_samples 30000 --timestep_respacing 250"
+#SAMPLE_FLAGS="--batch_size 2 --num_samples 6 --timestep_respacing 250"
 #export NCCL_P2P_DISABLE=1
 
 cmd="cd ../../../"
@@ -31,9 +31,9 @@ do
   do
     for extcapt in "${ext_capts[@]}"
     do
-cmd="python scripts_glide/contrastive/glide_sample_contrastive.py $MODEL_FLAGS --guidance_scale ${scale} \
+cmd="python scripts_glide/contrastive/glide_up_sample_contrastive.py $MODEL_FLAGS --guidance_scale ${scale} \
  --ext_captions eval_models/pretext2img/reference/captions_${extcapt}_512.npz --eps ${eps}  $SAMPLE_FLAGS \
- --logdir runs/sampling_glide_contrastive/IMN64/scale${scale}_eps${eps}_ec${extcapt}/ "
+ --logdir runs/sampling_glide_contrastive/IMN256/scale${scale}_eps${eps}_ec${extcapt}/ "
 echo ${cmd}
 eval ${cmd}
 done
@@ -54,7 +54,7 @@ do
     for extcapt in "${ext_capts[@]}"
     do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_MSCOCO_val_64x64_squ.npz \
- runs/sampling_glide_contrastive/IMN64/scale${scale}_eps${eps}_ec${extcapt}/reference/samples_30000x64x64x3.npz"
+ runs/sampling_glide_contrastive/IMN256/scale${scale}_eps${eps}_ec${extcapt}/reference/samples_30000x64x64x3.npz"
 echo ${cmd}
 eval ${cmd}
 done

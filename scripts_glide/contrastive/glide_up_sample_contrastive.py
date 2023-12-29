@@ -6,6 +6,9 @@ process towards more realistic images.
 import argparse
 import os
 
+import argparse
+import os
+
 import numpy as np
 import torch as th
 # import torch.distributed as dist
@@ -19,14 +22,15 @@ from eds_guided_diffusion.script_util import (
     args_to_dict,
 )
 
-# from glide_text2im.clip.model_creation import create_clip_model
 from glide_text2im.clip.model_creation import create_clip_model_contrastive
 from glide_text2im.download import load_checkpoint
-from glide_text2im.model_creation import (
+from glide_text2im.model_creation_robust import (
     create_model_and_diffusion,
+    create_model_and_diffusion_infodeg,
     model_and_diffusion_defaults,
     model_and_diffusion_defaults_upsampler,
 )
+
 
 import datetime
 from PIL import Image
@@ -34,8 +38,7 @@ from torchvision import utils
 import hfai.client
 import hfai.multiprocessing
 
-from datasets.coco_helper import load_data_caption, load_data_caption_hfai
-
+from datasets.coco_helper import load_data_caption, load_data_caption_hfai, load_data_caption_hfai_robust
 
 def main(local_rank):
     args = create_argparser().parse_args()
@@ -71,7 +74,7 @@ def main(local_rank):
     logger.log("creating model and diffusion...")
     options_model = args_to_dict(args, model_and_diffusion_defaults().keys())
     options_model['use_fp16'] = args.use_fp16
-    model, diffusion = create_model_and_diffusion(
+    model, diffusion = create_model_and_diffusion_infodeg(
         **options_model
     )
     model.load_state_dict(
@@ -132,6 +135,11 @@ def main(local_rank):
     else:
         all_images = []
     logger.log(f"Number of current images: {len(all_images)}")
+
+    logger.log(f"Loading external captions: {args.ext_captions}")
+    ext_captions_file = np.load(args.ext_captions)
+    embbed_captions = th.from_numpy(ext_captions_file['arr_0']).to(dist_util.dev())
+
     logger.log("sampling...")
 
     guidance_scale = args.guidance_scale
@@ -145,11 +153,9 @@ def main(local_rank):
     while len(all_images) * args.batch_size < args.num_samples:
         prompts = next(caption_iter)
         while len(prompts) != args.batch_size:
-            prompts = next(caption_iter)
+            prompts= next(caption_iter)
         #
-
-        # print(len(prompts))
-        cond_fn = clip_model.cond_fn(prompts, guidance_scale)
+        cond_fn = clip_model.cond_fn(prompts, guidance_scale, embbed_captions, args.eps)
 
         tokens = model.tokenizer.encode_batch(prompts)
         tokens, mask = model.tokenizer.padded_tokens_and_mask_batch(
@@ -261,7 +267,9 @@ def create_argparser():
         save_imgs_for_visualization=True,
         fix_seed=False,
         specified_class=None,
-        logdir=""
+        logdir="",
+        eps=0.9,
+        ext_captions="eval_models/pretext2img/reference/captions_1000_512.npz"
     )
     defaults.update(model_and_diffusion_defaults())
     # defaults.update(classifier_defaults())
@@ -273,4 +281,4 @@ def create_argparser():
 
 if __name__ == "__main__":
     ngpus = th.cuda.device_count()
-    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=True)
+    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=False)
