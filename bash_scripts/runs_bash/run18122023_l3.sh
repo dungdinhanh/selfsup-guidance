@@ -4,3 +4,5 @@
 hfai bash bash_scripts/sample_offtheshelf/im64cond_ots_mocov2_contrastive/IM64_cond_ots_mocov2_contrastive_instancebased2.sh ++
 
 hfai bash bash_scripts/sample_offtheshelf/im64cond_ots_mocov2_contrastive/IM64_cond_ots_mocov2_smoothcontrastive_instancebased2.sh ++
+
+hfai bash bash_scripts/sample_offtheshelf/im64cond_ots_mocov2_contrastive/IM64_cond_ots_mocov2_smoothcontrastive_instancebased3.sh ++
