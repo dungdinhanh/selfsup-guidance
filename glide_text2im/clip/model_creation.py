@@ -194,8 +194,8 @@ class CLIPModelContrastive:
                 # print(z_t_comb.shape)
                 # exit(0)
                 z_t_comb = z_t_ext
-                logits = similarity_match(z_i, z_t_comb)
-                logits_t = similarity_match_instance2instance(z_i, z_t)
+                logits = similarity_match(z_i, z_t_comb.detach())
+                logits_t = similarity_match_instance2instance(z_i, z_t.detach())
                 logits_cat = torch.cat([torch.unsqueeze(logits_t, dim=1), logits], dim=1)
 
                 # loss = torch.exp(self.logit_scale) * (z_t_comb * z_i).sum()

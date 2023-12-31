@@ -5,7 +5,7 @@ export NCCL_P2P_DISABLE=1
 
 MODEL_FLAGS=""
 
-SAMPLE_FLAGS="--batch_size 50 --num_samples 30000 --timestep_respacing 250"
+SAMPLE_FLAGS="--batch_size 80 --num_samples 30000 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 2 --num_samples 4 --timestep_respacing 250"
 #export NCCL_P2P_DISABLE=1
 
