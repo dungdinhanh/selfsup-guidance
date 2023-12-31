@@ -1,10 +1,11 @@
 #!/bin/bash
 
 
-export NCCL_P2P_DISABLE=1
+
 
 MODEL_FLAGS=""
 
+#SAMPLE_FLAGS="--batch_size 100 --num_samples 30000 --timestep_respacing 250"
 SAMPLE_FLAGS="--batch_size 100 --num_samples 30000 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 2 --num_samples 4 --timestep_respacing 250"
 #export NCCL_P2P_DISABLE=1
@@ -20,7 +21,7 @@ eval ${cmd}
 #scales=( "2.0" "2.5" "3.0"  )
 scales=( "1.0"  )
 
-epss=("0.8" "0.9" "0.95")
+epss=( "0.9" )
 
 ext_capts=("1000")
 
@@ -33,7 +34,7 @@ do
     do
 cmd="python scripts_glide/contrastive/glide_sample_contrastive.py $MODEL_FLAGS --guidance_scale ${scale} \
  --ext_captions eval_models/pretext2img/reference/captions_${extcapt}_512.npz --eps ${eps}  $SAMPLE_FLAGS \
- --logdir runs/sampling_glide_contrastive/IMN64/scale${scale}_eps${eps}_ec${extcapt}/ "
+ --logdir runs/sampling_glide_contrastive/IMN64/scale${scale}_eps${eps}_ec${extcapt}_fsm/ "
 echo ${cmd}
 eval ${cmd}
 done
@@ -47,6 +48,8 @@ done
 #echo ${cmd}
 #eval ${cmd}
 #done
+epss=( "0.8" "0.9" "0.95")
+
 for scale in "${scales[@]}"
 do
   for eps in "${epss[@]}"
@@ -54,7 +57,7 @@ do
     for extcapt in "${ext_capts[@]}"
     do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_MSCOCO_val_64x64_squ.npz \
- runs/sampling_glide_contrastive/IMN64/scale${scale}_eps${eps}_ec${extcapt}/reference/samples_30000x64x64x3.npz"
+ runs/sampling_glide_contrastive/IMN64/scale${scale}_eps${eps}_ec${extcapt}_fsm/reference/samples_30000x64x64x3.npz"
 echo ${cmd}
 eval ${cmd}
 done

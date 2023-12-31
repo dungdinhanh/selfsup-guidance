@@ -292,10 +292,9 @@ def infodeg_calculation(z_t: torch.Tensor, z_t_ext: torch.Tensor):
 def infodeg_calculation2(z_t: torch.Tensor, z_t_ext: torch.Tensor):
     sim_matrix_wo_z_t = torch.matmul(z_t, torch.transpose(z_t_ext, 1, 0))
     matrix_ones = torch.ones((z_t.shape[0], 1), device=sim_matrix_wo_z_t.get_device())
-    sim_matrix = torch.exp(torch.cat((matrix_ones, sim_matrix_wo_z_t), dim=1))
+    sim_matrix = torch.cat((matrix_ones, sim_matrix_wo_z_t), dim=1)
     sim_matrix_sum = torch.unsqueeze(torch.sum(sim_matrix, dim = 1), dim=1)
     sim_matrix = sim_matrix/sim_matrix_sum
-
     return sim_matrix
 
 

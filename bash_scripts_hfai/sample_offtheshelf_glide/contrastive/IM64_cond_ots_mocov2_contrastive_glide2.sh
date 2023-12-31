@@ -1,17 +1,18 @@
 #!/bin/bash
 
 
-export NCCL_P2P_DISABLE=1
+
 
 MODEL_FLAGS=""
 
-SAMPLE_FLAGS="--batch_size 80 --num_samples 30000 --timestep_respacing 250"
+#SAMPLE_FLAGS="--batch_size 100 --num_samples 30000 --timestep_respacing 250"
+SAMPLE_FLAGS="--batch_size 100 --num_samples 30000 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 2 --num_samples 4 --timestep_respacing 250"
 #export NCCL_P2P_DISABLE=1
 
 cmd="cd ../../../"
-#echo ${cmd}
-#eval ${cmd}
+echo ${cmd}
+eval ${cmd}
 
 cmd="ls"
 echo ${cmd}
@@ -20,7 +21,7 @@ eval ${cmd}
 #scales=( "2.0" "2.5" "3.0"  )
 scales=( "1.0"  )
 
-epss=("0.8" "0.9" "0.95")
+epss=( "0.95")
 
 ext_capts=("1000")
 
@@ -47,6 +48,8 @@ done
 #echo ${cmd}
 #eval ${cmd}
 #done
+epss=( "0.8" "0.9" "0.95")
+
 for scale in "${scales[@]}"
 do
   for eps in "${epss[@]}"
