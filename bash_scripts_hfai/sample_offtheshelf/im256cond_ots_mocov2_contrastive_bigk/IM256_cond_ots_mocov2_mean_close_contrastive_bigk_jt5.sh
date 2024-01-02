@@ -23,8 +23,9 @@ echo ${cmd}
 eval ${cmd}
 
 scales=( "20.0" )
-jointtemps=( "1.0")
-kcs=( "10")
+jointtemps=( "2.0"  )
+margintemps=( "0.5" "0.7" "1.0")
+kcs=( "20")
 
 
 
@@ -32,13 +33,16 @@ for scale in "${scales[@]}"
 do
 for jt in "${jointtemps[@]}"
 do
+  for mt in "${margintemps[@]}"
+do
   for kc in "${kcs[@]}"
   do
 cmd="python script_odiff/mocov2_meanclose_contrastive_sup_instance_sample_transform.py $MODEL_FLAGS --classifier_scale ${scale}  \
- --classifier_type mocov2 --model_path models/256x256_diffusion.pt $SAMPLE_FLAGS --joint_temperature ${jt}\
- --logdir runs/sampling_ots_bigk_contrastive/IMN256/kc${kc}/conditional/scale${scale}_jt${jt}_mocov2_mean_close/ --features eval_models/imn256_mocov2/reps3.npz --k_closest 10"
+ --classifier_type mocov2 --model_path models/256x256_diffusion.pt $SAMPLE_FLAGS --joint_temperature ${jt} --margin_temperature_discount ${mt}\
+ --logdir runs/sampling_ots_bigk_contrastive/IMN256/kc${kc}/conditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_mean_close/ --features eval_models/imn256_mocov2/reps3.npz --k_closest 10"
 echo ${cmd}
 eval ${cmd}
+done
 done
 done
 done
@@ -50,7 +54,7 @@ do
   for kc in "${kcs[@]}"
   do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet256_labeled.npz \
- runs/sampling_ots_bigk_contrastive/IMN256/kc${kc}/conditional/scale${scale}_jt${jt}_mocov2_mean_close/reference/samples_50000x256x256x3.npz"
+ runs/sampling_ots_bigk_contrastive/IMN256/kc${kc}/conditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_mean_close/reference/samples_50000x256x256x3.npz"
 echo ${cmd}
 eval ${cmd}
 done

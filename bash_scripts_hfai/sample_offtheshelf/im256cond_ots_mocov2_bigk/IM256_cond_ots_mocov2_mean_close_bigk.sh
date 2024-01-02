@@ -35,7 +35,7 @@ do
   do
 cmd="python script_odiff/mocov2_meanclose_sup_sample_transform.py $MODEL_FLAGS --classifier_scale ${scale}  \
  --classifier_type mocov2 --model_path models/256x256_diffusion.pt $SAMPLE_FLAGS --joint_temperature ${jt}\
- --logdir runs/sampling_ots_bigk/IMN256/kc${kc}/conditional/scale${scale}_mocov2_mean_close/ --features eval_models/imn256_mocov2/reps3.npz --k_closest 10"
+ --logdir runs/sampling_test/IMN256/kc${kc}/conditional/scale${scale}_mocov2_mean_close/ --features eval_models/imn256_mocov2/reps3.npz --k_closest ${kc}"
 echo ${cmd}
 eval ${cmd}
 done
@@ -48,8 +48,8 @@ for jt in "${jointtemps[@]}"
 do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet256_labeled.npz \
  runs/sampling_ots_bigk/IMN256/kc${kc}/conditional/scale${scale}_mocov2_mean_close/reference/samples_50000x256x256x3.npz"
-echo ${cmd}
-eval ${cmd}
+#echo ${cmd}
+#eval ${cmd}
 done
 done
 

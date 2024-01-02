@@ -24,7 +24,7 @@ eval ${cmd}
 
 scales=( "20.0" )
 jointtemps=( "0.3" )
-kcs=( "20")
+kcs=( "10")
 
 
 for scale in "${scales[@]}"

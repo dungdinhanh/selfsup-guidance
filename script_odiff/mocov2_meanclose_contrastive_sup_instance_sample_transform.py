@@ -176,7 +176,7 @@ def main(local_rank):
         # features_n = features_file['arr_0'].shape[0]
         features_p = features_file['arr_0']
         labels_associated = features_file['arr_1']
-        features_p, labels_associated = get_mean_closest_sup(features_p, labels_associated)
+        features_p, labels_associated = get_mean_closest_sup(features_p, labels_associated, k=args.k_closest)
         np.savez(features_mean_sup_file, features_p, labels_associated)
         logger.log(f"saving {features_mean_sup_file}")
 
@@ -379,7 +379,7 @@ def find_closest_set(mean_vector, vectors, k=5):
     indexes_sorted = np.argsort(list_distances)
     return vectors[indexes_sorted[:k]], indexes_sorted[:k]
 
-def get_mean_closest_sup(features_p, labels):
+def get_mean_closest_sup(features_p, labels, k=5):
     n = features_p.shape[0]
     dict_p_classes = {}
     p_mean_vectors = []
@@ -393,11 +393,11 @@ def get_mean_closest_sup(features_p, labels):
     for key in dict_p_classes.keys():
         p_vectors = np.stack(dict_p_classes[key])
         p_mean = np.mean(p_vectors, axis=0)
-        labels_vectors.append(np.asarray([key]))
-        p_closest_vectors = p_mean
+        labels_vectors.append(np.asarray([key] * k))
+        p_closest_vectors, indexes = find_closest_set(p_mean, p_vectors, k)
         p_mean_vectors.append(p_closest_vectors)
 
-    return np.stack(p_mean_vectors), np.concatenate(labels_vectors)
+    return np.concatenate(p_mean_vectors), np.concatenate(labels_vectors)
 
 
 if __name__ == "__main__":
