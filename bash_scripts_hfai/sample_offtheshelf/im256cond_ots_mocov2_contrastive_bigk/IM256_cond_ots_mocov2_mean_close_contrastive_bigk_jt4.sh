@@ -24,7 +24,7 @@ eval ${cmd}
 
 scales=( "20.0" )
 jointtemps=(  "2.0")
-kcs=( "20")
+kcs=( "10")
 
 
 
