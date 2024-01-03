@@ -10,6 +10,7 @@ from guided_diffusion.gaussian_diffusion_mlt import *
 from guided_diffusion.respace import *
 
 
+
 class GaussianDiffusionClassFree(GaussianDiffusionMLT2):
     def __init__(self,
         use_timesteps,
@@ -221,6 +222,208 @@ class GaussianDiffusionClassFree(GaussianDiffusionMLT2):
             _extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t
             - pred_xstart
         ) / _extract_into_tensor(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape)
+
+
+class GaussianDiffusionClassFree2(GaussianDiffusionClassFree):
+    def __init__(self,
+        use_timesteps,
+        *,
+        betas,
+        model_mean_type,
+        model_var_type,
+        loss_type,
+        rescale_timesteps=False,
+    ):
+        super(GaussianDiffusionClassFree2, self).__init__(use_timesteps=use_timesteps, betas=betas,
+                                                   model_mean_type=model_mean_type,
+                                                   model_var_type=model_var_type,
+                                                   loss_type=loss_type,
+                                                   rescale_timesteps=rescale_timesteps)
+
+    def condition_mean_mtl(self, cond_fn, p_mean_var, x, t, w=0.5, clip_denoised=True, denoised_fn=None,
+                           model_kwargs=None):
+        """
+        Compute the mean for the previous step, given a function cond_fn that
+        computes the gradient of a conditional log probability with respect to
+        x. In particular, cond_fn computes grad(log(p(y|x))), and we want to
+        condition on y.
+
+        This uses the conditioning strategy from Sohl-Dickstein et al. (2015).
+        """
+        out_uncond = self.p_mean_variance(cond_fn, x, t, clip_denoised=clip_denoised, denoised_fn=denoised_fn,
+                                        model_kwargs=model_kwargs)
+
+        eps_gen_cond = self._predict_eps_from_xstart(x, t, p_mean_var['pred_xstart'])
+        eps_gen = self._predict_eps_from_xstart(x, t, out_uncond['pred_xstart'])
+        new_eps = (1+w) * eps_gen_cond - w * eps_gen
+        new_predxstart = self.process_xstart(self._predict_xstart_from_eps(x, t, new_eps), denoised_fn, clip_denoised)
+        new_mean, _, _ = self.q_posterior_mean_variance(new_predxstart, x, t)
+
+        del eps_gen, eps_gen_cond, out_uncond, new_eps, new_predxstart
+        return new_mean
+
+class GaussianDiffusionClassFree2Contrastive(GaussianDiffusionClassFree):
+    def __init__(self,
+        use_timesteps,
+        *,
+        betas,
+        model_mean_type,
+        model_var_type,
+        loss_type,
+        rescale_timesteps=False,
+    ):
+        super(GaussianDiffusionClassFree2Contrastive, self).__init__(use_timesteps=use_timesteps, betas=betas,
+                                                   model_mean_type=model_mean_type,
+                                                   model_var_type=model_var_type,
+                                                   loss_type=loss_type,
+                                                   rescale_timesteps=rescale_timesteps)
+        self.cond_contrastive_fn = None
+        self.gamma_factor = 0.0
+
+    def condition_mean_mtl(self, cond_fn, p_mean_var, x, t, w=0.5, clip_denoised=True, denoised_fn=None,
+                           model_kwargs=None):
+        """
+        Compute the mean for the previous step, given a function cond_fn that
+        computes the gradient of a conditional log probability with respect to
+        x. In particular, cond_fn computes grad(log(p(y|x))), and we want to
+        condition on y.
+
+        This uses the conditioning strategy from Sohl-Dickstein et al. (2015).
+        """
+        out_uncond = self.p_mean_variance(cond_fn, x, t, clip_denoised=clip_denoised, denoised_fn=denoised_fn,
+                                        model_kwargs=model_kwargs)
+
+        eps_gen_cond = self._predict_eps_from_xstart(x, t, p_mean_var['pred_xstart'])
+        eps_gen = self._predict_eps_from_xstart(x, t, out_uncond['pred_xstart'])
+        new_eps = (1+w) * eps_gen_cond - w * eps_gen
+        new_predxstart = self.process_xstart(self._predict_xstart_from_eps(x, t, new_eps), denoised_fn, clip_denoised)
+        new_mean, _, _ = self.q_posterior_mean_variance(new_predxstart, x, t)
+
+        del eps_gen, eps_gen_cond, out_uncond, new_eps, new_predxstart
+
+        if self.cond_contrastive_fn is not None:
+            pred_xstart = p_mean_var['pred_xstart']
+            variance = p_mean_var['variance'][0][0][0][0].item()
+            self.max_variance = max(self.max_variance, variance)
+            # adding sin timely-decay factor to the guidance schedule
+            current_time = t[0].item()
+            add_value = max(np.sin((current_time / self.num_timesteps) * np.pi) * self.max_variance * self.gamma_factor, 0.0)
+            # off-the-shelf classifier guidance
+            gradient = self.cond_contrastive_fn([x, pred_xstart], self._scale_timesteps(t), **model_kwargs)
+            new_mean = new_mean + (p_mean_var["variance"] + add_value) * gradient.float()
+        return new_mean
+
+    def _scale_timesteps(self, t):
+        if self.rescale_timesteps:
+            return t.float() * (1000.0 / self.num_timesteps)
+        return t
+
+    def p_sample(
+            self,
+            model,
+            x,
+            t,
+            w_cond=0.5,
+            clip_denoised=True,
+            denoised_fn=None,
+            cond_fn=None,
+            model_kwargs=None,
+    ):
+        """
+        Batch consider
+
+        Sample x_{t-1} from the model at the given timestep.
+
+        :param model: the model to sample from.
+        :param x: the current tensor at x_{t-1}.
+        :param t: the value of t, starting at 0 for the first diffusion step.
+        :param clip_denoised: if True, clip the x_start prediction to [-1, 1].
+        :param denoised_fn: if not None, a function which applies to the
+            x_start prediction before it is used to sample.
+        :param cond_fn: if not None, this is a gradient function that acts
+                        similarly to the model.
+        :param model_kwargs: if not None, a dict of extra keyword arguments to
+            pass to the model. This can be used for conditioning.
+        :return: a dict containing the following keys:
+                 - 'sample': a random sample from the model.
+                 - 'pred_xstart': a prediction of x_0.
+        """
+        out = self.p_mean_variance(
+            model,
+            x,
+            t,
+            clip_denoised=clip_denoised,
+            denoised_fn=denoised_fn,
+            model_kwargs=model_kwargs,
+        )
+        self.t = t
+        noise = th.randn_like(x)
+        nonzero_mask = (
+            (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
+        )  # no noise when t == 0
+        if cond_fn is not None:
+            out["mean"] = self.condition_mean(
+                cond_fn, out, x, t, w_cond, clip_denoised, denoised_fn, model_kwargs=model_kwargs
+            )
+        sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
+        return {"sample": sample, "pred_xstart": out["pred_xstart"]}
+
+    def condition_mean(self, cond_fn, *args, **kwargs):
+        return self.condition_mean_mtl(self._wrap_model(cond_fn), *args, **kwargs)
+
+    def p_sample_loop_progressive(
+            self,
+            model,
+            shape,
+            noise=None,
+            clip_denoised=True,
+            denoised_fn=None,
+            cond_fn=None,
+            model_kwargs=None,
+            device=None,
+            progress=False,
+            w_cond=0.5
+    ):
+        """
+        Generate samples from the model and yield intermediate samples from
+        each timestep of diffusion.
+
+        Arguments are the same as p_sample_loop().
+        Returns a generator over dicts, where each dict is the return value of
+        p_sample().
+        """
+        if device is None:
+            device = next(model.parameters()).device
+        assert isinstance(shape, (tuple, list))
+        if noise is not None:
+            img = noise
+        else:
+            img = th.randn(*shape, device=device)
+        indices = list(range(self.num_timesteps))[::-1]
+
+        if progress:
+            # Lazy import so that we don't depend on tqdm.
+            from tqdm.auto import tqdm
+
+            indices = tqdm(indices)
+
+        self.max_variance = 0.0
+
+        for i in indices:
+            t = th.tensor([i] * shape[0], device=device)
+            with th.no_grad():
+                out = self.p_sample(
+                    model,
+                    img,
+                    t,
+                    clip_denoised=clip_denoised,
+                    denoised_fn=denoised_fn,
+                    cond_fn=cond_fn,
+                    model_kwargs=model_kwargs,
+                    w_cond=w_cond
+                )
+                yield out
+                img = out["sample"]
 
 
 class GaussianDiffusionClassFreeMLT2(GaussianDiffusionClassFree):
