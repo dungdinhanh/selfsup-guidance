@@ -1,7 +1,9 @@
 #!/bin/bash
 
-SAMPLE_FLAGS="--batch_size 128 --num_samples 50000 --timestep_respacing 250"
-SAMPLE_FLAGS="--batch_size 1 --num_samples 1 --timestep_respacing 250"
+export NCCL_P2P_DISABLE=1
+
+SAMPLE_FLAGS="--batch_size 200 --num_samples 50000 --timestep_respacing 250"
+#SAMPLE_FLAGS="--batch_size 1 --num_samples 1 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 4 --num_samples 50000 --timestep_respacing 250"
 #TRAIN_FLAGS="--lr 1e-4 --batch_size 128 --schedule_sampler loss-second-moment"
 
@@ -20,13 +22,6 @@ cmd="cd ../../../"
 cmd="ls"
 echo ${cmd}
 eval ${cmd}
-
-#scales=( "0.05" "0.1" "0.2")
-scales=( "0.05" )
-cscales=("1.0")
-jointtemps=("1.0")
-margintemps=("1.0")
-kcs=("5")
 
 #scales=( "0.05" "0.1" "0.2")
 scales=( "0.05" "0.1" "0.2" "0.5")
