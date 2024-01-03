@@ -51,12 +51,15 @@ for scale in "${scales[@]}"
 do
 for jt in "${jointtemps[@]}"
 do
+  for mt in "${margintemps[@]}"
+do
   for kc in "${kcs[@]}"
   do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet256_labeled.npz \
  runs/sampling_ots_bigk_contrastive/IMN256/kc${kc}/conditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_mean_close/reference/samples_50000x256x256x3.npz"
 echo ${cmd}
 eval ${cmd}
+done
 done
 done
 done
