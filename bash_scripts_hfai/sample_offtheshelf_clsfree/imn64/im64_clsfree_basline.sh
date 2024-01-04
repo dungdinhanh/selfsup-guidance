@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SAMPLE_FLAGS="--batch_size 128 --num_samples 50000 --timestep_respacing 250"
+SAMPLE_FLAGS="--batch_size 210 --num_samples 50000 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 4 --num_samples 50000 --timestep_respacing 250"
 #TRAIN_FLAGS="--lr 1e-4 --batch_size 128 --schedule_sampler loss-second-moment"
 

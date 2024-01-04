@@ -21,7 +21,7 @@ cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
-scales=( "0.05" "0.1" "0.2")
+scales=( "2.0" "4.0" "6.0")
 #scales=( "0.05" )
 cscales=("1.0")
 jointtemps=("1.0")
@@ -41,7 +41,7 @@ do
 cmd="python script_odiff/classifier_free/classifier_free_sample2_contrastive.py $MODEL_FLAGS --cond_model_scale ${scale}  \
 --uncond_model_path models/64x64_diffusion_unc.pt --classifier_type mocov2 \
  --features eval_models/imn64_mocov2/reps3.npz \
- --save_imgs_for_visualization True \
+ --save_imgs_for_visualization True --classifier_scale ${cscale}\
 --model_path models/64x64_diffusion.pt  $SAMPLE_FLAGS \
  --k_closest ${kc} --joint_temperature ${jt} --margin_temperature_discount ${mt}\
  --logdir runs/sampling_clsfree_version2/IMN64/contrastive/scale${scale}_cscale${cscale}_jt${jt}_mt${mt}/ "

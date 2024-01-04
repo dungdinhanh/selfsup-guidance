@@ -93,7 +93,7 @@ def main(local_rank):
 
     def model_fn(x, t, y=None):
         assert y is not None
-        return model(x, t,  None)
+        return model(x, t,  y)
 
     logger.log("Looking for previous file")
     checkpoint = os.path.join(output_images_folder, "samples_last.npz")

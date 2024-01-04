@@ -27,7 +27,7 @@ do
 cmd="python script_odiff/classifier_free/classifier_free_sample2.py $MODEL_FLAGS --cond_model_scale ${scale}  \
 --uncond_model_path models/64x64_diffusion_unc.pt \
 --model_path models/64x64_diffusion.pt  $SAMPLE_FLAGS \
- --logdir uns/sampling_clsfree_version2/IMN64/normal/scale${scale}/ "
+ --logdir runs/sampling_clsfree_version2/IMN64/normal/scale${scale}/ "
 echo ${cmd}
 eval ${cmd}
 done

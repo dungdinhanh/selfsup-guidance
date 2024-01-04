@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SAMPLE_FLAGS="--batch_size 128 --num_samples 50000 --timestep_respacing 250"
+SAMPLE_FLAGS="--batch_size 250 --num_samples 50000 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 1 --num_samples 1 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 4 --num_samples 50000 --timestep_respacing 250"
 #TRAIN_FLAGS="--lr 1e-4 --batch_size 128 --schedule_sampler loss-second-moment"
@@ -21,16 +21,16 @@ cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
-scales=( "0.05" "0.1" "0.2")
+scales=( "0.05" "0.1" )
 #scales=( "0.05" )
-cscales=("1.0")
+cscales=( "6.0" "8.0" "10.0")
 jointtemps=("1.0")
 margintemps=("1.0")
 kcs=("5")
 
 for scale in "${scales[@]}"
 do
-  for cscale in "${scales[@]}"
+  for cscale in "${cscales[@]}"
   do
     for jt in "${jointtemps[@]}"
 do
