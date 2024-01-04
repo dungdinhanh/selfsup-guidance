@@ -55,8 +55,8 @@ do
     do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_MSCOCO_val_64x64_squ.npz \
  runs/sampling_glide_contrastive/IMN256/scale${scale}_eps${eps}_ec${extcapt}/reference/samples_30000x64x64x3.npz"
-echo ${cmd}
-eval ${cmd}
+#echo ${cmd}
+#eval ${cmd}
 done
 done
 done
