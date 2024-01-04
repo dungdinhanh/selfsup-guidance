@@ -56,7 +56,7 @@ done
 
 for scale in "${scales[@]}"
 do
-  for cscale in "${scales[@]}"
+  for cscale in "${cscales[@]}"
   do
     for jt in "${jointtemps[@]}"
 do

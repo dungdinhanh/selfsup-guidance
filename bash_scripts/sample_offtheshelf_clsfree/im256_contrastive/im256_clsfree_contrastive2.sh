@@ -21,7 +21,7 @@ cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
-scales=( "4.0" "6.0" )
+scales=( "1.0" "2.0" )
 #scales=( "0.05" )
 cscales=( "1.0")
 jointtemps=("1.0")
@@ -56,13 +56,13 @@ done
 
 for scale in "${scales[@]}"
 do
-  for cscale in "${cscales[@]}"
+  for cscale in "${scales[@]}"
   do
     for jt in "${jointtemps[@]}"
 do
 for mt in "${margintemps[@]}"
 do
-cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet256_labeled.npz \
+cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet64_labeled.npz \
  runs/sampling_clsfree_version2/IMN256/contrastive/scale${scale}_cscale${cscale}_jt${jt}_mt${mt}/reference/samples_50000x64x64x3.npz"
 echo ${cmd}
 eval ${cmd}

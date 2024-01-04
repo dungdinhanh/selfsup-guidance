@@ -1,11 +1,12 @@
 #!/bin/bash
 
-SAMPLE_FLAGS="--batch_size 50 --num_samples 50000 --timestep_respacing 250"
+SAMPLE_FLAGS="--batch_size 30 --num_samples 50000 --timestep_respacing 250"
+#SAMPLE_FLAGS="--batch_size 30 --num_samples 50000 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 1 --num_samples 1 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 4 --num_samples 50000 --timestep_respacing 250"
 #TRAIN_FLAGS="--lr 1e-4 --batch_size 128 --schedule_sampler loss-second-moment"
 
-MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond False --diffusion_steps 1000 \
+MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond True --diffusion_steps 1000 \
  --image_size 256 --learn_sigma True --noise_schedule linear --num_channels 256 --num_head_channels 64 \
   --num_res_blocks 2 --resblock_updown True --use_fp16 True --use_scale_shift_norm True"
 
@@ -14,14 +15,14 @@ MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond False --diffusion_step
 # --learn_sigma True --noise_schedule cosine --num_channels 192 --num_head_channels 64 --num_res_blocks 3 \
 #  --resblock_updown True --use_new_attention_order True --use_fp16 True --use_scale_shift_norm True"
 cmd="cd ../../../"
-echo ${cmd}
-eval ${cmd}
+#echo ${cmd}
+#eval ${cmd}
 
 cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
-scales=( "4.0" "6.0" )
+scales=( "0.1" "0.5" )
 #scales=( "0.05" )
 cscales=( "1.0")
 jointtemps=("1.0")
@@ -56,13 +57,13 @@ done
 
 for scale in "${scales[@]}"
 do
-  for cscale in "${cscales[@]}"
+  for cscale in "${scales[@]}"
   do
     for jt in "${jointtemps[@]}"
 do
 for mt in "${margintemps[@]}"
 do
-cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet256_labeled.npz \
+cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet64_labeled.npz \
  runs/sampling_clsfree_version2/IMN256/contrastive/scale${scale}_cscale${cscale}_jt${jt}_mt${mt}/reference/samples_50000x64x64x3.npz"
 echo ${cmd}
 eval ${cmd}
