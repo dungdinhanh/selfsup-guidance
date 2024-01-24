@@ -256,7 +256,7 @@ def main(local_rank):
         num_class = NUM_CLASSES
     while len(all_images) * args.batch_size < args.num_samples:
         model_kwargs = {}
-        n = args.batch_sizes
+        n = args.batch_size
 
         random_selected_indexes = np.random.randint(0, features_n, (n,), dtype=int)
         p_features = th.from_numpy(features_p).to(dist_util.dev())
