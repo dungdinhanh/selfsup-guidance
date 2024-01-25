@@ -39,7 +39,7 @@ do
   for kc in "${kcs[@]}"
   do
 cmd="python script_odiff/classifier_free/classifier_free_sample2_contrastive.py $MODEL_FLAGS --cond_model_scale ${scale}  \
---uncond_model_path models/64x64_diffusion_unc.pt --classifier_type mocov2 \
+--uncond_model_path models/64x64_diffusion_unc.pt --classifier_type mocov2 --classifier_scale ${cscale} \
  --features eval_models/imn64_mocov2/reps3.npz \
  --save_imgs_for_visualization True \
 --model_path models/64x64_diffusion.pt  $SAMPLE_FLAGS \

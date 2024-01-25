@@ -9,8 +9,7 @@ import numpy as np
 import torch as th
 import hfai.nccl.distributed as dist
 import torch.nn.functional as F
-# import hfai
-import hfai.multiprocessing
+import hfai
 from PIL import Image
 import time
 import numpy as np
@@ -61,7 +60,7 @@ def main(local_rank):
 
     if args.fix_seed:
         import random
-        seed = 23333 + dist.get_rank()
+        seed = args.seed + dist.get_rank()
         np.random.seed(seed)
         th.manual_seed(seed)  # CPU随机种子确定
         th.cuda.manual_seed(seed)  # GPU随机种子确定
@@ -82,7 +81,7 @@ def main(local_rank):
 
     logger.configure(save_folder, rank=dist.get_rank())
 
-    output_images_folder = os.path.join(args.logdir, "reference")
+    output_images_folder = args.logdir
     os.makedirs(output_images_folder, exist_ok=True)
 
     logger.log("creating model and diffusion...")
@@ -198,6 +197,24 @@ def main(local_rank):
         with th.enable_grad():
             x = inputs[0]
             pred_xstart = inputs[1]
+            # if True:
+            #     np_y = y.detach().cpu().numpy()
+            #     print(np_y)
+            utils.save_image(
+                x.detach().clamp(-1, 1),
+                os.path.join(vis_images_folder_xt, "samples_{}.png".format(t[0] + 1)),
+                nrow=1,
+                normalize=True,
+                range=(-1, 1),
+            )
+
+            utils.save_image(
+                pred_xstart.detach().clamp(-1, 1),
+                os.path.join(vis_images_folder_x0, "samples_{}.png".format(t[0] + 1)),
+                nrow=1,
+                normalize=True,
+                range=(-1, 1),
+            )
             # off-the-shelf ResNet guided
             pred_xstart = pred_xstart.detach().requires_grad_(True)
 
@@ -225,13 +242,18 @@ def main(local_rank):
             # temperature2 = temperature1 * args.margin_temperature_discount
             # numerator = th.exp(logits*temperature1)[range(len(logits)), y.view(-1)].unsqueeze(1)
             # denominator2 = th.exp(logits*temperature2).sum(1, keepdims=True)
-            # selected = th.log(numerator / denominator2)
+            # selected = th.log(numerator / denominator
             return th.autograd.grad(selected.sum(), pred_xstart_r)[0] * args.classifier_scale
 
     logger.log("Looking for previous file")
     checkpoint = os.path.join(output_images_folder, "samples_last.npz")
     vis_images_folder = os.path.join(output_images_folder, "sample_images")
     os.makedirs(vis_images_folder, exist_ok=True)
+    vis_images_folder_xt = os.path.join(vis_images_folder, "xt")
+    os.makedirs(vis_images_folder_xt, exist_ok=True)
+
+    vis_images_folder_x0 = os.path.join(vis_images_folder, "x0")
+    os.makedirs(vis_images_folder_x0, exist_ok=True)
     final_file = os.path.join(output_images_folder,
                               f"samples_{args.num_samples}x{args.image_size}x{args.image_size}x3.npz")
 
@@ -258,10 +280,24 @@ def main(local_rank):
     while len(all_images) * args.batch_size < args.num_samples:
         model_kwargs = {}
         n = args.batch_size
+        if not args.fix_class:
+            random_selected_indexes = np.random.randint(0, features_n, (n,), dtype=int)
 
-        random_selected_indexes = np.random.randint(0, features_n, (n,), dtype=int)
+        else:
+            # find index
+            class_indexes = np.where(labels_associated == args.fix_class_index)[0]
+            print(class_indexes)
+            random_selected_indexes = np.random.randint(class_indexes[0] + args.k_chosen,
+                                                        class_indexes[0] + args.k_chosen + 1,
+                                                        (n,), dtype=int)
+            print(random_selected_indexes)
         p_features = th.from_numpy(features_p).to(dist_util.dev())
+        # print(p_features)
+        # print(labels_associated)
+        # exit(0)
         classes = th.from_numpy(labels_associated[random_selected_indexes]).to(dist_util.dev())
+        print(classes[0])
+
 
         model_kwargs["y"] = classes
         model_kwargs["p_features"] = p_features
@@ -291,8 +327,6 @@ def main(local_rank):
                 normalize=True,
                 range=(-1, 1),
             )
-
-
         sample = ((sample + 1) * 127.5).clamp(0, 255).to(th.uint8)
         sample = sample.permute(0, 2, 3, 1)
         sample = sample.contiguous()
@@ -305,23 +339,8 @@ def main(local_rank):
         dist.all_gather(gathered_labels, classes)
         batch_labels = [labels.cpu().numpy() for labels in gathered_labels]
         all_labels.extend(batch_labels)
-        if dist.get_rank() == 0:
-            if hfai.client.receive_suspend_command():
-                print("Receive suspend - good luck next run ^^")
-                hfai.client.go_suspend()
-            logger.log(f"created {len(all_images) * args.batch_size} samples")
-            np.savez(checkpoint, np.stack(all_images), np.stack(all_labels))
 
-    arr = np.concatenate(all_images, axis=0)
-    arr = arr[: args.num_samples]
-    label_arr = np.concatenate(all_labels, axis=0)
-    label_arr = label_arr[: args.num_samples]
-    if dist.get_rank() == 0:
-        shape_str = "x".join([str(x) for x in arr.shape])
-        out_path = os.path.join(output_images_folder, f"samples_{shape_str}.npz")
-        logger.log(f"saving to {out_path}")
-        np.savez(out_path, arr, label_arr)
-        os.remove(checkpoint)
+
 
     dist.barrier()
     logger.log("sampling complete")
@@ -349,6 +368,8 @@ def create_argparser():
         features="eval_models/imn128_mocov2/reps3.npz",
         save_imgs_for_visualization=False,
         k_closest=5,
+        seed=23333,
+        k_chosen=2,
     )
     defaults.update(model_and_diffusion_defaults())
     defaults.update(simsiam_defaults())

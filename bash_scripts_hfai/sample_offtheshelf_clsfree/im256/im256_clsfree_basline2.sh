@@ -21,52 +21,24 @@ cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
-scales=( "4.0" "6.0" )
-#scales=( "0.05" )
-cscales=( "1.0")
-jointtemps=("1.0")
-margintemps=("1.0")
-kcs=("20")
+scales=( "0.5" "0.6" )
 
 for scale in "${scales[@]}"
 do
-  for cscale in "${cscales[@]}"
-  do
-    for jt in "${jointtemps[@]}"
-do
-for mt in "${margintemps[@]}"
-do
-  for kc in "${kcs[@]}"
-  do
-cmd="python script_odiff/classifier_free/classifier_free_sample2_contrastive.py $MODEL_FLAGS --cond_model_scale ${scale}  \
---uncond_model_path models/256x256_diffusion_uncond.pt --classifier_type mocov2 \
- --features eval_models/imn256_mocov2/reps3.npz \
- --save_imgs_for_visualization True \
---model_path models/256x256_diffusion.pt  $SAMPLE_FLAGS \
- --k_closest ${kc} --joint_temperature ${jt} --margin_temperature_discount ${mt}\
- --logdir runs/sampling_clsfree_version2/IMN256/contrastive/scale${scale}_cscale${cscale}_jt${jt}_mt${mt}/ "
+cmd="python script_odiff/classifier_free/classifier_free_sample2.py $MODEL_FLAGS --cond_model_scale ${scale}  \
+--uncond_model_path models/256x256_diffusion_uncond.pt  \
+--model_path models/256x256_diffusion.pt   $SAMPLE_FLAGS \
+ --logdir runs/sampling_clsfree_version2/IMN256/normal/scale${scale}/ "
 echo ${cmd}
 eval ${cmd}
 done
-done
-done
-done
-done
+
 
 
 for scale in "${scales[@]}"
-do
-  for cscale in "${cscales[@]}"
-  do
-    for jt in "${jointtemps[@]}"
-do
-for mt in "${margintemps[@]}"
 do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet256_labeled.npz \
- runs/sampling_clsfree_version2/IMN256/contrastive/scale${scale}_cscale${cscale}_jt${jt}_mt${mt}/reference/samples_50000x256x256x3.npz"
+ runs/sampling_clsfree_version2/IMN256/normal/scale${scale}/reference/samples_50000x256x256x3.npz"
 echo ${cmd}
 eval ${cmd}
-done
-done
-done
 done
