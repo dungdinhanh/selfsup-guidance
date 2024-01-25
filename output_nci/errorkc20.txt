@@ -1,0 +1,46 @@
+Loading python3/3.9.2
+  Loading requirement: intel-mkl/2020.3.304
+Loading gdiff
+  Loading requirement: cuda/11.4.1 cudnn/8.2.2-cuda11.4 nccl/2.10.3-cuda11.4
+    openmpi/4.1.2 magma/2.6.0 fftw3/3.3.8
+Traceback (most recent call last):
+  File "/home/562/dd9648/code/selfsup-guidance/script_odiff/mocov2_meanclose_contrastive_sup_instance_sample_transform_nci.py", line 406, in <module>
+    th.multiprocessing.spawn(main, args=(), nprocs=ngpus)
+  File "/scratch/zg12/dd9648/envs/gdiff/lib/python3.9/site-packages/torch/multiprocessing/spawn.py", line 230, in spawn
+    return start_processes(fn, args, nprocs, join, daemon, start_method='spawn')
+  File "/scratch/zg12/dd9648/envs/gdiff/lib/python3.9/site-packages/torch/multiprocessing/spawn.py", line 188, in start_processes
+    while not context.join():
+  File "/scratch/zg12/dd9648/envs/gdiff/lib/python3.9/site-packages/torch/multiprocessing/spawn.py", line 150, in join
+    raise ProcessRaisedException(msg, error_index, failed_process.pid)
+torch.multiprocessing.spawn.ProcessRaisedException: 
+
+-- Process 0 terminated with the following error:
+Traceback (most recent call last):
+  File "/scratch/zg12/dd9648/envs/gdiff/lib/python3.9/site-packages/torch/multiprocessing/spawn.py", line 59, in _wrap
+    fn(i, *args)
+  File "/home/562/dd9648/code/selfsup-guidance/script_odiff/mocov2_meanclose_contrastive_sup_instance_sample_transform_nci.py", line 60, in main
+    dist_util.setup_dist(local_rank)
+  File "/home/562/dd9648/code/selfsup-guidance/off_guided_diffusion/dist_util.py", line 36, in setup_dist
+    dist.init_process_group(backend='nccl', init_method=f'tcp://{ip}:{port}', world_size=hosts * gpus,
+  File "/scratch/zg12/dd9648/envs/gdiff/lib/python3.9/site-packages/hfai/nccl/distributed/__init__.py", line 103, in init_process_group
+    torch_init_process_group(
+  File "/scratch/zg12/dd9648/envs/gdiff/lib/python3.9/site-packages/torch/distributed/distributed_c10d.py", line 576, in init_process_group
+    store, rank, world_size = next(rendezvous_iterator)
+  File "/scratch/zg12/dd9648/envs/gdiff/lib/python3.9/site-packages/torch/distributed/rendezvous.py", line 183, in _tcp_rendezvous_handler
+    store = _create_c10d_store(result.hostname, result.port, rank, world_size, timeout)
+  File "/scratch/zg12/dd9648/envs/gdiff/lib/python3.9/site-packages/torch/distributed/rendezvous.py", line 157, in _create_c10d_store
+    return TCPStore(
+RuntimeError: Address already in use
+
+2024-01-25 07:38:43.468829: I tensorflow/core/util/util.cc:169] oneDNN custom operations are on. You may see slightly different numerical results due to floating-point round-off errors from different computation orders. To turn them off, set the environment variable `TF_ENABLE_ONEDNN_OPTS=0`.
+2024-01-25 07:38:47.197137: I tensorflow/core/platform/cpu_feature_guard.cc:193] This TensorFlow binary is optimized with oneAPI Deep Neural Network Library (oneDNN) to use the following CPU instructions in performance-critical operations:  AVX2 AVX512F AVX512_VNNI FMA
+To enable them in other operations, rebuild TensorFlow with the appropriate compiler flags.
+2024-01-25 07:38:48.558790: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1532] Created device /job:localhost/replica:0/task:0/device:GPU:0 with 30987 MB memory:  -> device: 0, name: Tesla V100-SXM2-32GB, pci bus id: 0000:3d:00.0, compute capability: 7.0
+2024-01-25 07:38:48.559813: I tensorflow/core/common_runtime/gpu/gpu_device.cc:1532] Created device /job:localhost/replica:0/task:0/device:GPU:1 with 30987 MB memory:  -> device: 1, name: Tesla V100-SXM2-32GB, pci bus id: 0000:3e:00.0, compute capability: 7.0
+2024-01-25 07:38:48.933219: W tensorflow/core/framework/op_def_util.cc:371] Op BatchNormWithGlobalNormalization is deprecated. It will cease to work in GraphDef version 9. Use tf.nn.batch_normalization().
+Traceback (most recent call last):
+  File "/home/562/dd9648/code/selfsup-guidance/evaluations/evaluator_tolog.py", line 665, in <module>
+    main()
+  File "/home/562/dd9648/code/selfsup-guidance/evaluations/evaluator_tolog.py", line 43, in main
+    f = open(log_file, "w")
+FileNotFoundError: [Errno 2] No such file or directory: '/scratch/zg12/dd9648/runs/sampling_ots_rerunicml/IMN64/conditional/scale15.0_jointtemp1.0_margtemp1.0_k20_mocov2_meanclose_sup_contrastive_isb/reference/score.csv'

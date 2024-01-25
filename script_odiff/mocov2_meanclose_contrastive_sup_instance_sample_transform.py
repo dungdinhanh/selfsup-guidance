@@ -9,7 +9,8 @@ import numpy as np
 import torch as th
 import hfai.nccl.distributed as dist
 import torch.nn.functional as F
-import hfai
+# import hfai
+import hfai.multiprocessing
 from PIL import Image
 import time
 import numpy as np
