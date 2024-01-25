@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SAMPLE_FLAGS="--batch_size 50 --num_samples 50000 --timestep_respacing 250"
-#SAMPLE_FLAGS="--batch_size 1 --num_samples 1 --timestep_respacing 250"
+SAMPLE_FLAGS="--batch_size 1 --num_samples 1 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 4 --num_samples 50000 --timestep_respacing 250"
 #TRAIN_FLAGS="--lr 1e-4 --batch_size 128 --schedule_sampler loss-second-moment"
 
@@ -14,19 +14,19 @@ MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond True --diffusion_steps
 # --learn_sigma True --noise_schedule cosine --num_channels 192 --num_head_channels 64 --num_res_blocks 3 \
 #  --resblock_updown True --use_new_attention_order True --use_fp16 True --use_scale_shift_norm True"
 cmd="cd ../../../"
-echo ${cmd}
-eval ${cmd}
+#echo ${cmd}
+#eval ${cmd}
 
 cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
-scales=( "4.0" "6.0" )
+scales=( "0.6"  )
 #scales=( "0.05" )
-cscales=( "1.0")
+cscales=( "15.0")
 jointtemps=("1.0")
 margintemps=("1.0")
-kcs=("20")
+kcs=("50")
 
 for scale in "${scales[@]}"
 do
@@ -44,7 +44,7 @@ cmd="python script_odiff/classifier_free/classifier_free_sample2_contrastive.py 
  --save_imgs_for_visualization True \
 --model_path models/256x256_diffusion.pt  $SAMPLE_FLAGS \
  --k_closest ${kc} --joint_temperature ${jt} --margin_temperature_discount ${mt}\
- --logdir runs/sampling_clsfree_version2/IMN256/contrastive/scale${scale}_cscale${cscale}_jt${jt}_mt${mt}/ "
+ --logdir runs/sampling_clsfree_version2/IMN256/contrastive/scale${scale}_cscale${cscale}_jt${jt}_mt${mt}_kc${kc}/ "
 echo ${cmd}
 eval ${cmd}
 done
@@ -62,10 +62,13 @@ do
 do
 for mt in "${margintemps[@]}"
 do
+    for kc in "${kcs[@]}"
+  do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet256_labeled.npz \
- runs/sampling_clsfree_version2/IMN256/contrastive/scale${scale}_cscale${cscale}_jt${jt}_mt${mt}/reference/samples_50000x256x256x3.npz"
-echo ${cmd}
-eval ${cmd}
+ runs/sampling_clsfree_version2/IMN256/contrastive/scale${scale}_cscale${cscale}_jt${jt}_mt${mt}_kc${kc}/reference/samples_50000x256x256x3.npz"
+#echo ${cmd}
+#eval ${cmd}
+done
 done
 done
 done
