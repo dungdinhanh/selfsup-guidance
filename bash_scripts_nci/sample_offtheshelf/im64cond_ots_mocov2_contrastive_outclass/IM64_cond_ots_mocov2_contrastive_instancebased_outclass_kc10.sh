@@ -10,8 +10,8 @@
 #PBS -l wd
 #PBS -l storage=scratch/zg12
 #PBS -M adin6536@uni.sydney.edu.au
-#PBS -o output_nci/log_outclass_kc10_s10.txt
-#PBS -e output_nci/error_outclass_kc10_s10.txt
+#PBS -o output_nci2/log_outclass_kc10_s10.txt
+#PBS -e output_nci2/error_outclass_kc10_s10.txt
 
 module load use.own
 module load python3/3.9.2
@@ -61,7 +61,7 @@ do
 cmd="WORLD_SIZE=1 RANK=0 MASTER_IP=127.0.0.1 MASTER_PORT=29517 MARSV2_WHOLE_LIFE_STATE=0 python3 script_odiff/mocov2_meanclose_contrastive_sup_instance_sample_transform_nci.py \
  $MODEL_FLAGS --classifier_scale ${scale}  \
 --classifier_type mocov2 --model_path ${storage_dir}/models/64x64_diffusion.pt $SAMPLE_FLAGS --joint_temperature ${jt} \
- --logdir ${storage_dir}/runs/sampling_ots_cons_outclass/IMN64/conditional/scale${scale}_jointtemp${jt}_margtemp${mt}_kc${kc}_mocov2_meanclose_sup_contrastive_outclass_isb/ \
+ --logdir ${storage_dir}/runs/sampling_ots_cons_outclass2/IMN64/conditional/scale${scale}_jointtemp${jt}_margtemp${mt}_kc${kc}_mocov2_meanclose_sup_contrastive_outclass_isb/ \
  --features ${storage_dir}/eval_models/imn64_mocov2/reps3.npz --save_imgs_for_visualization True --k_closest ${kc}"
 echo ${cmd}
 eval ${cmd}
@@ -79,7 +79,7 @@ do
   for kc in "${kcs[@]}"
   do
 cmd="python3 evaluations/evaluator_tolog.py ${storage_dir}/reference/VIRTUAL_imagenet64_labeled.npz \
- ${storage_dir}/runs/sampling_ots_cons_outclass/IMN64/conditional/scale${scale}_jointtemp${jt}_margtemp${mt}_kc${kc}_mocov2_meanclose_sup_contrastive_outclass_isb/reference/samples_50000x64x64x3.npz"
+ ${storage_dir}/runs/sampling_ots_cons_outclass2/IMN64/conditional/scale${scale}_jointtemp${jt}_margtemp${mt}_kc${kc}_mocov2_meanclose_sup_contrastive_outclass_isb/reference/samples_50000x64x64x3.npz"
 echo ${cmd}
 eval ${cmd}
 done

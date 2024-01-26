@@ -411,8 +411,8 @@ def get_mask(labels_list, selected_indexes):
     for i in range(selected_indexes.shape[0]):
         selected_index = selected_indexes[i]
         list_label_selected = np.where(labels_list == labels_list[selected_index])
-        mask[i, list_label_selected] *= 0
-        mask[i, selected_index] = 1
+        mask[i, list_label_selected] *= 0.0
+        mask[i, selected_index] = 1.0
     return mask
     pass
 
