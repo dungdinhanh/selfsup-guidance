@@ -1,4 +1,4 @@
-Thu Jan 25 22:33:57 2024       
+Thu Jan 25 22:40:39 2024       
 +---------------------------------------------------------------------------------------+
 | NVIDIA-SMI 535.104.12             Driver Version: 535.104.12   CUDA Version: 12.2     |
 |-----------------------------------------+----------------------+----------------------+
@@ -11,7 +11,7 @@ Thu Jan 25 22:33:57 2024
 |                                         |                      |                  N/A |
 +-----------------------------------------+----------------------+----------------------+
 |   1  Tesla V100-SXM2-32GB           On  | 00000000:B2:00.0 Off |                    0 |
-| N/A   33C    P0              41W / 300W |      0MiB / 32768MiB |      0%      Default |
+| N/A   34C    P0              41W / 300W |      0MiB / 32768MiB |      0%      Default |
 |                                         |                      |                  N/A |
 +-----------------------------------------+----------------------+----------------------+
                                                                                          
@@ -50,35 +50,35 @@ scripts_gdiff
 scripts_glide
 setup.py
 tempignore.txt
-WORLD_SIZE=1 RANK=0 MASTER_IP=127.0.0.1 MASTER_PORT=29512 MARSV2_WHOLE_LIFE_STATE=0 python3 script_odiff/mocov2_meanclose_contrastive_sup_instance_sample_transform_nci.py --attention_resolutions 32,16,8 --class_cond True --diffusion_steps 1000 --dropout 0.1 --image_size 64 --learn_sigma True --noise_schedule cosine --num_channels 192 --num_head_channels 64 --num_res_blocks 3 --resblock_updown True --use_new_attention_order True --use_fp16 True --use_scale_shift_norm True --classifier_scale 15.0 --classifier_type mocov2 --model_path /scratch/zg12/dd9648/models/64x64_diffusion.pt --batch_size 300 --num_samples 50000 --timestep_respacing 250 --joint_temperature 1.0 --logdir /scratch/zg12/dd9648/runs/sampling_ots_rerunicml/IMN64/conditional/scale15.0_jointtemp1.0_margtemp1.0_k15_mocov2_meanclose_sup_contrastive_isb/ --features /scratch/zg12/dd9648/eval_models/imn64_mocov2/reps3.npz --save_imgs_for_visualization True --k_closest 15
-Logging to /scratch/zg12/dd9648/runs/sampling_ots_rerunicml/IMN64/conditional/scale15.0_jointtemp1.0_margtemp1.0_k15_mocov2_meanclose_sup_contrastive_isb/logs
+WORLD_SIZE=1 RANK=0 MASTER_IP=127.0.0.1 MASTER_PORT=29510 MARSV2_WHOLE_LIFE_STATE=0 python3 script_odiff/mocov2_meanclose_contrastive_sup_instance_sample_transform_nci.py --attention_resolutions 32,16,8 --class_cond True --diffusion_steps 1000 --dropout 0.1 --image_size 64 --learn_sigma True --noise_schedule cosine --num_channels 192 --num_head_channels 64 --num_res_blocks 3 --resblock_updown True --use_new_attention_order True --use_fp16 True --use_scale_shift_norm True --classifier_scale 16.0 --classifier_type mocov2 --model_path /scratch/zg12/dd9648/models/64x64_diffusion.pt --batch_size 300 --num_samples 50000 --timestep_respacing 250 --joint_temperature 1.0 --logdir /scratch/zg12/dd9648/runs/sampling_ots_rerunicml/IMN64/conditional/scale16.0_jointtemp1.0_margtemp1.0_mocov2_meanclose_sup_contrastive_isb/ --features /scratch/zg12/dd9648/eval_models/imn64_mocov2/reps3.npz --save_imgs_for_visualization True
+Logging to /scratch/zg12/dd9648/runs/sampling_ots_rerunicml/IMN64/conditional/scale16.0_jointtemp1.0_margtemp1.0_mocov2_meanclose_sup_contrastive_isb/logs
 creating model and diffusion...
 loading classifier...
-args: Namespace(clip_denoised=True, num_samples=50000, log_dir=None, fix_class=False, fix_class_index=0, batch_size=300, use_ddim=False, model_path='/scratch/zg12/dd9648/models/64x64_diffusion.pt', classifier_path='', classifier_scale=15.0, classifier_type='mocov2', softplus_beta=inf, joint_temperature=1.0, margin_temperature_discount=1.0, gamma_factor=0.0, logdir='/scratch/zg12/dd9648/runs/sampling_ots_rerunicml/IMN64/conditional/scale15.0_jointtemp1.0_margtemp1.0_k15_mocov2_meanclose_sup_contrastive_isb/', fix_seed=False, features='/scratch/zg12/dd9648/eval_models/imn64_mocov2/reps3.npz', save_imgs_for_visualization=True, k_closest=15, image_size=64, num_channels=192, num_res_blocks=3, num_heads=4, num_heads_upsample=-1, num_head_channels=64, attention_resolutions='32,16,8', channel_mult='', dropout=0.1, class_cond=True, use_checkpoint=False, use_scale_shift_norm=True, resblock_updown=True, use_fp16=True, use_new_attention_order=True, learn_sigma=True, diffusion_steps=1000, noise_schedule='cosine', timestep_respacing='250', use_kl=False, predict_xstart=False, rescale_timesteps=False, rescale_learned_sigmas=False, dim=2048, pred_dim=512, base_model='resnet50')
+args: Namespace(clip_denoised=True, num_samples=50000, log_dir=None, fix_class=False, fix_class_index=0, batch_size=300, use_ddim=False, model_path='/scratch/zg12/dd9648/models/64x64_diffusion.pt', classifier_path='', classifier_scale=16.0, classifier_type='mocov2', softplus_beta=inf, joint_temperature=1.0, margin_temperature_discount=1.0, gamma_factor=0.0, logdir='/scratch/zg12/dd9648/runs/sampling_ots_rerunicml/IMN64/conditional/scale16.0_jointtemp1.0_margtemp1.0_mocov2_meanclose_sup_contrastive_isb/', fix_seed=False, features='/scratch/zg12/dd9648/eval_models/imn64_mocov2/reps3.npz', save_imgs_for_visualization=True, k_closest=5, image_size=64, num_channels=192, num_res_blocks=3, num_heads=4, num_heads_upsample=-1, num_head_channels=64, attention_resolutions='32,16,8', channel_mult='', dropout=0.1, class_cond=True, use_checkpoint=False, use_scale_shift_norm=True, resblock_updown=True, use_fp16=True, use_new_attention_order=True, learn_sigma=True, diffusion_steps=1000, noise_schedule='cosine', timestep_respacing='250', use_kl=False, predict_xstart=False, rescale_timesteps=False, rescale_learned_sigmas=False, dim=2048, pred_dim=512, base_model='resnet50')
 Looking for previous file
 sampling complete
-python3 evaluations/evaluator_tolog.py /scratch/zg12/dd9648/reference/VIRTUAL_imagenet64_labeled.npz /scratch/zg12/dd9648/runs/sampling_ots_rerunicml/IMN64/conditional/scale15.0_jointtemp1.0_margtemp1.0_k15_mocov2_meanclose_sup_contrastive_isb/reference/samples_50000x64x64x3.npz
+python3 evaluations/evaluator_tolog.py /scratch/zg12/dd9648/reference/VIRTUAL_imagenet64_labeled.npz /scratch/zg12/dd9648/runs/sampling_ots_rerunicml/IMN64/conditional/scale16.0_jointtemp1.0_margtemp1.0_mocov2_meanclose_sup_contrastive_isb/reference/samples_50000x64x64x3.npz
 warming up TensorFlow...
 computing reference batch activations...
 computing/reading reference batch statistics...
 computing sample batch activations...
 computing/reading sample batch statistics...
 Computing evaluations...
-Inception Score: 56.138755798339844
-FID: 1.9214722397449577
-sFID: 3.296571568186664
+Inception Score: 56.475990295410156
+FID: 1.916261302289513
+sFID: 3.320104855177533
 
 ======================================================================================
-                  Resource Usage on 2024-01-25 22:36:53:
-   Job Id:             107107576.gadi-pbs
+                  Resource Usage on 2024-01-25 22:43:20:
+   Job Id:             107107589.gadi-pbs
    Project:            zg12
    Exit Status:        1
-   Service Units:      3.50
+   Service Units:      3.18
    NCPUs Requested:    24                     NCPUs Used: 24              
-                                           CPU Time Used: 00:02:38        
-   Memory Requested:   32.0GB                Memory Used: 15.77GB         
-   NGPUs Requested:    2                 GPU Utilisation: 54%             
+                                           CPU Time Used: 00:02:29        
+   Memory Requested:   32.0GB                Memory Used: 10.35GB         
+   NGPUs Requested:    2                 GPU Utilisation: 42%             
                                          GPU Memory Used: 8.82GB          
-   Walltime requested: 24:00:00            Walltime Used: 00:02:55        
+   Walltime requested: 24:00:00            Walltime Used: 00:02:39        
    JobFS requested:    50.0GB                 JobFS used: 0B              
 ======================================================================================

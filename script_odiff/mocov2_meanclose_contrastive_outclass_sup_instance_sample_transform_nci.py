@@ -108,7 +108,7 @@ def main(local_rank):
             classifier.convert_to_fp16()
         classifier.eval()
     elif args.classifier_type=='simsiam':
-        resnet_address = 'eval_models/simsiam_0099.pth.tar'
+        resnet_address = '/scratch/zg12/dd9648/eval_models/simsiam_0099.pth.tar'
         resnet = create_simsiam_selfsup(**args_to_dict(args, simsiam_defaults().keys()))
         for param in resnet.parameters():
             param.required_grad = False
@@ -117,7 +117,7 @@ def main(local_rank):
         resnet.eval()
         resnet.sampling=True
     elif args.classifier_type=='mocov2':
-        resnet_address = 'eval_models/moco_v2_800ep_pretrain.pth.tar'
+        resnet_address = '/scratch/zg12/dd9648/eval_models/moco_v2_800ep_pretrain.pth.tar'
         resnet = create_mocov2_selfsup(**args_to_dict(args, simsiam_defaults().keys()))
         for param in resnet.parameters():
             param.required_grad = False
@@ -127,10 +127,10 @@ def main(local_rank):
         resnet.sampling=True
     else:
         if args.classifier_type == 'resnet50':
-            resnet_address = 'eval_models/resnet50-19c8e357.pth'
+            resnet_address = '/scratch/zg12/dd9648/eval_models/resnet50-19c8e357.pth'
             resnet = models.resnet50()
         elif args.classifier_type == 'resnet101':
-            resnet_address = 'eval_models/resnet101-5d3b4d8f.pth'
+            resnet_address = '/scratch/zg12/dd9648/eval_models/resnet101-5d3b4d8f.pth'
             resnet = models.resnet101()
 
 
@@ -419,4 +419,4 @@ def get_mask(labels_list, selected_indexes):
 
 if __name__ == "__main__":
     ngpus = th.cuda.device_count()
-    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=False)
+    th.multiprocessing.spawn(main, args=(), nprocs=ngpus)

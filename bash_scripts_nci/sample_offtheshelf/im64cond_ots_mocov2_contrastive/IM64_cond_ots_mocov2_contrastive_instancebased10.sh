@@ -76,17 +76,13 @@ for jt in "${jointtemps[@]}"
 do
 for mt in "${margintemps[@]}"
 do
-  for kc in "${kcs[@]}"
-  do
-cmd="python3 evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet64_labeled.npz \
+cmd="python3 evaluations/evaluator_tolog.py ${storage_dir}/reference/VIRTUAL_imagenet64_labeled.npz \
  ${storage_dir}/runs/sampling_ots_rerunicml/IMN64/conditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_meanclose_sup_contrastive_isb/reference/samples_50000x64x64x3.npz"
 echo ${cmd}
 eval ${cmd}
 done
 done
 done
-done
-
 
 
 
