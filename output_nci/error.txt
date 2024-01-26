@@ -1,7 +1,0 @@
-Loading python3/3.9.2
-  Loading requirement: intel-mkl/2020.3.304
-Loading gdiff
-  Loading requirement: cuda/11.4.1 cudnn/8.2.2-cuda11.4 nccl/2.10.3-cuda11.4
-    openmpi/4.1.2 magma/2.6.0 fftw3/3.3.8
-/apps/python3/3.9.2/lib/python3.9/multiprocessing/resource_tracker.py:216: UserWarning: resource_tracker: There appear to be 4 leaked semaphore objects to clean up at shutdown
-  warnings.warn('resource_tracker: There appear to be %d '
