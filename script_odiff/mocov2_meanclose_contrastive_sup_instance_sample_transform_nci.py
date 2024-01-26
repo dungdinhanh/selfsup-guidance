@@ -8,9 +8,9 @@ import os
 import numpy as np
 import torch as th
 import hfai.nccl.distributed as dist
+# import torch.distributed as dist
 import torch.nn.functional as F
-# import hfai
-import hfai.multiprocessing
+import hfai
 from PIL import Image
 import time
 import numpy as np
@@ -109,7 +109,7 @@ def main(local_rank):
             classifier.convert_to_fp16()
         classifier.eval()
     elif args.classifier_type=='simsiam':
-        resnet_address = 'eval_models/simsiam_0099.pth.tar'
+        resnet_address = '/scratch/zg12/dd9648/eval_models/simsiam_0099.pth.tar'
         resnet = create_simsiam_selfsup(**args_to_dict(args, simsiam_defaults().keys()))
         for param in resnet.parameters():
             param.required_grad = False
@@ -118,7 +118,7 @@ def main(local_rank):
         resnet.eval()
         resnet.sampling=True
     elif args.classifier_type=='mocov2':
-        resnet_address = 'eval_models/moco_v2_800ep_pretrain.pth.tar'
+        resnet_address = '/scratch/zg12/dd9648/eval_models/moco_v2_800ep_pretrain.pth.tar'
         resnet = create_mocov2_selfsup(**args_to_dict(args, simsiam_defaults().keys()))
         for param in resnet.parameters():
             param.required_grad = False
@@ -403,4 +403,4 @@ def get_mean_closest_sup(features_p, labels, k=5):
 
 if __name__ == "__main__":
     ngpus = th.cuda.device_count()
-    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=False)
+    th.multiprocessing.spawn(main, args=(), nprocs=ngpus)

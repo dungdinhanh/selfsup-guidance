@@ -9,8 +9,7 @@ import numpy as np
 import torch as th
 import hfai.nccl.distributed as dist
 import torch.nn.functional as F
-# import hfai
-import hfai.multiprocessing
+import hfai
 from PIL import Image
 import time
 import numpy as np
@@ -109,7 +108,7 @@ def main(local_rank):
             classifier.convert_to_fp16()
         classifier.eval()
     elif args.classifier_type=='simsiam':
-        resnet_address = 'eval_models/simsiam_0099.pth.tar'
+        resnet_address = '/scratch/zg12/dd9648/eval_models/simsiam_0099.pth.tar'
         resnet = create_simsiam_selfsup(**args_to_dict(args, simsiam_defaults().keys()))
         for param in resnet.parameters():
             param.required_grad = False
@@ -118,7 +117,7 @@ def main(local_rank):
         resnet.eval()
         resnet.sampling=True
     elif args.classifier_type=='mocov2':
-        resnet_address = 'eval_models/moco_v2_800ep_pretrain.pth.tar'
+        resnet_address = '/scratch/zg12/dd9648/eval_models/moco_v2_800ep_pretrain.pth.tar'
         resnet = create_mocov2_selfsup(**args_to_dict(args, simsiam_defaults().keys()))
         for param in resnet.parameters():
             param.required_grad = False
@@ -128,10 +127,10 @@ def main(local_rank):
         resnet.sampling=True
     else:
         if args.classifier_type == 'resnet50':
-            resnet_address = 'eval_models/resnet50-19c8e357.pth'
+            resnet_address = '/scratch/zg12/dd9648/eval_models/resnet50-19c8e357.pth'
             resnet = models.resnet50()
         elif args.classifier_type == 'resnet101':
-            resnet_address = 'eval_models/resnet101-5d3b4d8f.pth'
+            resnet_address = '/scratch/zg12/dd9648/eval_models/resnet101-5d3b4d8f.pth'
             resnet = models.resnet101()
 
 
@@ -161,7 +160,7 @@ def main(local_rank):
     if dist.get_rank() == 0:
         print('args:', args)
 
-    def model_fn(x, t, y=None, p_features=None, selected_indexes=None):
+    def model_fn(x, t, y=None, p_features=None, selected_indexes=None, mask=None):
         assert y is not None
         return model(x, t, y if args.class_cond else None)
 
@@ -193,7 +192,7 @@ def main(local_rank):
     # features_p = features_file['arr_0']
     # features_z = features_file['arr_1']
     # labels_associated = features_file['arr_2']
-    def design_cond_fn(inputs, t, y=None, p_features=None, selected_indexes=None):
+    def design_cond_fn(inputs, t, y=None, p_features=None, selected_indexes=None, mask=None):
         assert y is not None
         with th.enable_grad():
             x = inputs[0]
@@ -213,7 +212,7 @@ def main(local_rank):
             p_x_0 = resnet(pred_xstart_r)
             match1 = similarity_match(p_x_0, p_features.detach())
 
-            logits = match1
+            logits = match1 * mask
             # logits_t = match2
             temperature1 = args.joint_temperature
             temperature2 = temperature1 * args.margin_temperature_discount
@@ -263,9 +262,16 @@ def main(local_rank):
         p_features = th.from_numpy(features_p).to(dist_util.dev())
         classes = th.from_numpy(labels_associated[random_selected_indexes]).to(dist_util.dev())
 
+        mask = get_mask(labels_associated, random_selected_indexes)
+        mask = th.from_numpy(mask).to(dist_util.dev())
+
+        # for i in range(n):
+
+
         model_kwargs["y"] = classes
         model_kwargs["p_features"] = p_features
         model_kwargs["selected_indexes"] = th.from_numpy(random_selected_indexes).to(dist_util.dev())
+        model_kwargs["mask"] = mask
 
         sample_fn = (
             diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop
@@ -400,7 +406,17 @@ def get_mean_closest_sup(features_p, labels, k=5):
 
     return np.concatenate(p_mean_vectors), np.concatenate(labels_vectors)
 
+def get_mask(labels_list, selected_indexes):
+    mask = np.ones((selected_indexes.shape[0], labels_list.shape[0]))
+    for i in range(selected_indexes.shape[0]):
+        selected_index = selected_indexes[i]
+        list_label_selected = np.where(labels_list == labels_list[selected_index])
+        mask[i, list_label_selected] *= 0.0
+        mask[i, selected_index] = 1.0
+    return mask
+    pass
+
 
 if __name__ == "__main__":
     ngpus = th.cuda.device_count()
-    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=False)
+    th.multiprocessing.spawn(main, args=(), nprocs=ngpus)

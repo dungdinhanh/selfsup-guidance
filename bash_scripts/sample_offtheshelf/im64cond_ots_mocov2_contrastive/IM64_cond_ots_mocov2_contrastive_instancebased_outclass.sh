@@ -40,7 +40,7 @@ for mt in "${margintemps[@]}"
 do
 cmd="python script_odiff/mocov2_meanclose_contrastive_outclass_sup_instance_sample_transform.py $MODEL_FLAGS --classifier_scale ${scale}  \
 --classifier_type mocov2 --model_path models/64x64_diffusion.pt $SAMPLE_FLAGS --joint_temperature ${jt} \
- --logdir runs/sampling_ots_cons_outclass/IMN64/conditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_meanclose_sup_contrastive_outclass_isb/ \
+ --logdir runs/sampling_ots_cons_outclass2/IMN64/conditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_meanclose_sup_contrastive_outclass_isb/ \
  --features eval_models/imn64_mocov2/reps3.npz --save_imgs_for_visualization True"
 echo ${cmd}
 eval ${cmd}
@@ -55,9 +55,9 @@ do
 for mt in "${margintemps[@]}"
 do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet64_labeled.npz \
- runs/sampling_ots_cons_outclass/IMN64/conditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_meanclose_sup_contrastive_outclass_isb/reference/samples_50000x64x64x3.npz"
-#echo ${cmd}
-#eval ${cmd}
+ runs/sampling_ots_cons_outclass2/IMN64/conditional/scale${scale}_jointtemp${jt}_margtemp${mt}_mocov2_meanclose_sup_contrastive_outclass_isb/reference/samples_50000x64x64x3.npz"
+echo ${cmd}
+eval ${cmd}
 done
 done
 done

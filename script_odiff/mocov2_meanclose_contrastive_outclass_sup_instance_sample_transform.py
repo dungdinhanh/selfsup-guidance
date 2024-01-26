@@ -212,7 +212,7 @@ def main(local_rank):
             p_x_0 = resnet(pred_xstart_r)
             match1 = similarity_match(p_x_0, p_features.detach())
 
-            logits = match1
+            logits = match1 * mask
             # logits_t = match2
             temperature1 = args.joint_temperature
             temperature2 = temperature1 * args.margin_temperature_discount
@@ -411,8 +411,8 @@ def get_mask(labels_list, selected_indexes):
     for i in range(selected_indexes.shape[0]):
         selected_index = selected_indexes[i]
         list_label_selected = np.where(labels_list == labels_list[selected_index])
-        mask[i, list_label_selected] *= 0
-        mask[i, selected_index] = 1
+        mask[i, list_label_selected] *= 0.0
+        mask[i, selected_index] = 1.0
     return mask
     pass
 
