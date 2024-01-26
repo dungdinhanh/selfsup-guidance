@@ -419,4 +419,4 @@ def get_mask(labels_list, selected_indexes):
 
 if __name__ == "__main__":
     ngpus = th.cuda.device_count()
-    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=False)
+    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=True)
