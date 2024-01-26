@@ -214,7 +214,7 @@ def main(local_rank):
             p_x_0 = resnet(pred_xstart_r)
             match1 = similarity_match(p_x_0, p_features.detach())
 
-            logits = match1
+            logits = match1 * mask
             # print(logits.shape)
             # exit(0)
             # logits_t = match2
@@ -428,4 +428,4 @@ def get_mask(labels_list, selected_indexes):
 
 if __name__ == "__main__":
     ngpus = th.cuda.device_count()
-    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=False)
+    th.multiprocessing.spawn(main, args=(), nprocs=ngpus)
