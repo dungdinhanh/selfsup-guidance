@@ -7,7 +7,7 @@ MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond True --diffusion_steps
 
 
 SAMPLE_FLAGS="--batch_size 50 --num_samples 50000 --timestep_respacing 250"
-SAMPLE_FLAGS="--batch_size 2 --num_samples 2 --timestep_respacing 250"
+SAMPLE_FLAGS="--batch_size 1 --num_samples 1 --timestep_respacing 250"
 
 
 
@@ -25,6 +25,7 @@ eval ${cmd}
 scales=( "16.0" )
 jointtemps=( "0.5" )
 kcs=("10" "15" "20")
+kcs=("50")
 
 
 for scale in "${scales[@]}"
@@ -35,7 +36,7 @@ do
   do
 cmd="python script_odiff/mocov2_meanclose_sup_sample_transform.py $MODEL_FLAGS --classifier_scale ${scale}  \
  --classifier_type mocov2 --model_path models/256x256_diffusion.pt $SAMPLE_FLAGS --joint_temperature ${jt}\
- --logdir runs/sampling_test/IMN256/kc${kc}/conditional/scale${scale}_mocov2_mean_close/ --features eval_models/imn256_mocov2/reps3.npz --k_closest ${kc}"
+ --logdir runs/sampling_test/IMN256/kc${kc}/conditional/scale${scale}_mocov2_mean_close/ --features eval_models/imn256_mocov2/reps3_1k.npz --k_closest ${kc}"
 echo ${cmd}
 eval ${cmd}
 done

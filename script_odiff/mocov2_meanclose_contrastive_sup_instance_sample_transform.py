@@ -9,7 +9,8 @@ import numpy as np
 import torch as th
 import hfai.nccl.distributed as dist
 import torch.nn.functional as F
-import hfai
+# import hfai
+import hfai.multiprocessing
 from PIL import Image
 import time
 import numpy as np
@@ -256,7 +257,7 @@ def main(local_rank):
         num_class = NUM_CLASSES
     while len(all_images) * args.batch_size < args.num_samples:
         model_kwargs = {}
-        n = args.batch_sizes
+        n = args.batch_size
 
         random_selected_indexes = np.random.randint(0, features_n, (n,), dtype=int)
         p_features = th.from_numpy(features_p).to(dist_util.dev())
@@ -402,4 +403,4 @@ def get_mean_closest_sup(features_p, labels, k=5):
 
 if __name__ == "__main__":
     ngpus = th.cuda.device_count()
-    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=True)
+    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=False)

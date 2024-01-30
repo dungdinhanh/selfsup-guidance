@@ -15,8 +15,8 @@ MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond True --diffusion_steps
 # --learn_sigma True --noise_schedule cosine --num_channels 192 --num_head_channels 64 --num_res_blocks 3 \
 #  --resblock_updown True --use_new_attention_order True --use_fp16 True --use_scale_shift_norm True"
 cmd="cd ../../../"
-#echo ${cmd}
-#eval ${cmd}
+echo ${cmd}
+eval ${cmd}
 
 cmd="ls"
 echo ${cmd}
@@ -64,7 +64,7 @@ do
 for mt in "${margintemps[@]}"
 do
 cmd="python evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet256_labeled.npz \
- runs/sampling_clsfree_version2/IMN256/contrastive/scale${scale}_cscale${cscale}_jt${jt}_mt${mt}/reference/samples_50000x64x64x3.npz"
+ runs/sampling_clsfree_version2/IMN256/contrastive/scale${scale}_cscale${cscale}_jt${jt}_mt${mt}/reference/samples_50000x256x256x3.npz"
 echo ${cmd}
 eval ${cmd}
 done

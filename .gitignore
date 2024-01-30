@@ -14,4 +14,6 @@ glide_model_cache
 eval_models/
 ssguided_diffusion.egg-info
 ss_models/
+output_nci/
+output_nci2/
 

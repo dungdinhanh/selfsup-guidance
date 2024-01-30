@@ -87,7 +87,7 @@ def main(local_rank):
         args.logdir,
         "logs",
     )
-    output_file = os.path.join(args.logdir, "reps3.npz")
+    output_file = os.path.join(args.logdir, "reps3_1k.npz")
     if dist.get_rank() == 0:
         logger.configure(log_folder, rank=dist.get_rank())
     else:

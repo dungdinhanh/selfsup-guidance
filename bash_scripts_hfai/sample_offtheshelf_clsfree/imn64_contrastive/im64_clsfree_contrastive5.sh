@@ -40,7 +40,7 @@ do
   do
 cmd="python script_odiff/classifier_free/classifier_free_sample2_contrastive.py $MODEL_FLAGS --cond_model_scale ${scale}  \
 --uncond_model_path models/64x64_diffusion_unc.pt --classifier_type mocov2 \
- --features eval_models/imn64_mocov2/reps3.npz \
+ --features eval_models/imn64_mocov2/reps3.npz  --classifier_scale ${cscale} \
  --save_imgs_for_visualization True \
 --model_path models/64x64_diffusion.pt  $SAMPLE_FLAGS \
  --k_closest ${kc} --joint_temperature ${jt} --margin_temperature_discount ${mt}\
