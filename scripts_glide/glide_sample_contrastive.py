@@ -1,5 +1,6 @@
 """
-Using off-the-shelf classifier to guide the diffusion sampling
+Like image_sample.py, but use a noisy image classifier to guide the sampling
+process towards more realistic images.
 """
 
 import argparse
@@ -7,51 +8,42 @@ import os
 
 import numpy as np
 import torch as th
+# import torch.distributed as dist
 import hfai.nccl.distributed as dist
 import torch.nn.functional as F
 import hfai
-from PIL import Image
-import time
-import numpy as np
-import csv
-import functools
-import torchvision.models as models
-from scripts_gdiff.selfsup.support.script_util_ss import create_simsiam_selfsup, simsiam_defaults, create_mocov2_selfsup
-from scripts_gdiff.selfsup.support.dist_util import load_simsiam, load_mocov2
-from off_guided_diffusion import dist_util, logger
-from off_guided_diffusion.script_util import (
+from guided_diffusion import dist_util, logger
+from eds_guided_diffusion.script_util import (
     NUM_CLASSES,
-    model_and_diffusion_defaults,
-    classifier_defaults,
-    create_model_and_diffusion,
-    create_classifier,
     add_dict_to_argparser,
     args_to_dict,
 )
+import torchvision.models as models
+from glide_text2im.clip.model_creation import create_clip_model
+from glide_text2im.download import load_checkpoint
+from glide_text2im.model_creation import (
+    create_model_and_diffusion,
+    model_and_diffusion_defaults,
+    model_and_diffusion_defaults_upsampler,
+)
+
+from off_guided_diffusion.script_util import (
+    classifier_defaults,
+    create_classifier,
+    NUM_CLASSES
+)
+
+from scripts_gdiff.selfsup.support.script_util_ss import create_simsiam_selfsup, simsiam_defaults, create_mocov2_selfsup
+from scripts_gdiff.selfsup.support.dist_util import load_simsiam, load_mocov2
+
+import datetime
+from PIL import Image
 from torchvision import utils
+import hfai.client
+import hfai.multiprocessing
 
-def center_crop_arr(images, image_size):
-    # We are not on a new enough PIL to support the `reducing_gap`
-    # argument, which uses BOX downsampling at powers of two first.
-    # Thus, we do it by hand to improve downsample quality.
-    y_size = images.shape[2]
-    x_size = images.shape[3]
-    crop_y = (y_size - image_size) // 2
-    crop_x = (x_size - image_size) // 2
-    return images[:, :, crop_y : crop_y + image_size, crop_x : crop_x + image_size]
+from datasets.coco_helper import load_data_caption, load_data_caption_hfai
 
-
-def custom_normalize(images, mean, std):
-    # print(images.shape)
-    # Check if the input tensor has the same number of channels as the mean and std
-    if images.size(1) != len(mean) or images.size(1) != len(std):
-        raise ValueError("The number of channels in the input tensor must match the length of mean and std.")
-    images = images.to(th.float)
-    # Normalize the tensor
-    for c in range(images.size(1)):
-        images[:, c, :, :] = (images[:, c, :, :] - mean[c]) / std[c]
-
-    return images
 
 def main(local_rank):
     args = create_argparser().parse_args()
@@ -85,17 +77,30 @@ def main(local_rank):
     os.makedirs(output_images_folder, exist_ok=True)
 
     logger.log("creating model and diffusion...")
+    options_model = args_to_dict(args, model_and_diffusion_defaults().keys())
+    options_model['use_fp16'] = args.use_fp16
     model, diffusion = create_model_and_diffusion(
-        **args_to_dict(args, model_and_diffusion_defaults().keys())
+        **options_model
     )
     model.load_state_dict(
-        dist_util.load_state_dict(args.model_path, map_location="cpu")
+        load_checkpoint('base', th.device("cpu"))
     )
     model.to(dist_util.dev())
     if args.use_fp16:
         model.convert_to_fp16()
     model.eval()
+    logger.log('total base parameters', sum(x.numel() for x in model.parameters()))
 
+    # options_up = model_and_diffusion_defaults_upsampler()
+    # options_up['timestep_respacing'] = 'fast27'
+    # options_up['use_fp16'] = args.use_fp16
+    # model_up, diffusion_up = create_model_and_diffusion(**options_up)
+    # model_up.load_state_dict(load_checkpoint('upsample', th.device("cpu")))
+    # model_up.to(dist_util.dev())
+    # if args.use_fp16:
+    #     model_up.convert_to_fp16()
+    # model_up.eval()
+    # print('total upsampler parameters', sum(x.numel() for x in model_up.parameters()))
     assert args.classifier_type in ['finetune', 'resnet50', 'resnet101', 'simsiam', 'mocov2']
     logger.log("loading classifier...")
     if args.classifier_type == 'finetune':
@@ -107,7 +112,7 @@ def main(local_rank):
         if args.classifier_use_fp16:
             classifier.convert_to_fp16()
         classifier.eval()
-    elif args.classifier_type=='simsiam':
+    elif args.classifier_type == 'simsiam':
         resnet_address = 'eval_models/simsiam_0099.pth.tar'
         resnet = create_simsiam_selfsup(**args_to_dict(args, simsiam_defaults().keys()))
         for param in resnet.parameters():
@@ -115,8 +120,8 @@ def main(local_rank):
         resnet.load_state_dict(load_simsiam(resnet_address))
         resnet.to(dist_util.dev())
         resnet.eval()
-        resnet.sampling=True
-    elif args.classifier_type=='mocov2':
+        resnet.sampling = True
+    elif args.classifier_type == 'mocov2':
         resnet_address = 'eval_models/moco_v2_800ep_pretrain.pth.tar'
         resnet = create_mocov2_selfsup(**args_to_dict(args, simsiam_defaults().keys()))
         for param in resnet.parameters():
@@ -124,7 +129,7 @@ def main(local_rank):
         resnet.load_state_dict(load_mocov2(resnet_address))
         resnet.to(dist_util.dev())
         resnet.eval()
-        resnet.sampling=True
+        resnet.sampling = True
     else:
         if args.classifier_type == 'resnet50':
             resnet_address = 'eval_models/resnet50-19c8e357.pth'
@@ -132,7 +137,6 @@ def main(local_rank):
         elif args.classifier_type == 'resnet101':
             resnet_address = 'eval_models/resnet101-5d3b4d8f.pth'
             resnet = models.resnet101()
-
 
         for param in resnet.parameters():
             param.required_grad = False
@@ -145,12 +149,13 @@ def main(local_rank):
             for name, module in resnet.named_children():
                 if isinstance(module, th.nn.ReLU):
                     resnet._modules[name] = th.nn.Softplus(beta=args.softplus_beta)
-                if name in ['layer1','layer2','layer3','layer4']:
+                if name in ['layer1', 'layer2', 'layer3', 'layer4']:
                     for sub_name, sub_module in module.named_children():
                         if isinstance(sub_module, models.resnet.Bottleneck):
                             for subsub_name, subsub_module in sub_module.named_children():
                                 if isinstance(subsub_module, th.nn.ReLU):
-                                    resnet._modules[name]._modules[sub_name]._modules[subsub_name] = th.nn.Softplus(beta=args.softplus_beta)
+                                    resnet._modules[name]._modules[sub_name]._modules[subsub_name] = th.nn.Softplus(
+                                        beta=args.softplus_beta)
 
     args.classifier_scale = float(args.classifier_scale)
     args.joint_temperature = float(args.joint_temperature)
@@ -176,10 +181,9 @@ def main(local_rank):
         # features_n = features_file['arr_0'].shape[0]
         features_p = features_file['arr_0']
         labels_associated = features_file['arr_1']
-        features_p, labels_associated = get_mean_closest_sup(features_p, labels_associated, k=args.k_closest)
+        features_p, labels_associated = get_mean_closest_sup(features_p, labels_associated)
         np.savez(features_mean_sup_file, features_p, labels_associated)
         logger.log(f"saving {features_mean_sup_file}")
-
 
     features_file = np.load(features_mean_sup_file)
     features_n = features_file['arr_0'].shape[0]
@@ -187,54 +191,32 @@ def main(local_rank):
 
     labels_associated = features_file['arr_1']
 
+    logger.log("loading clip...")
+    clip_model = create_clip_model(device=dist_util.dev())
+    clip_model.image_encoder.load_state_dict(load_checkpoint('clip/image-enc', th.device("cpu")))
+    clip_model.text_encoder.load_state_dict(load_checkpoint('clip/text-enc', th.device("cpu")))
+    clip_model.image_encoder.to(dist_util.dev())
+    clip_model.text_encoder.to(dist_util.dev())
+    # classifier = create_classifier(**args_to_dict(args, classifier_defaults().keys()))
+    # classifier.load_state_dict(
+    #     dist_util.load_state_dict(args.classifier_path, map_location="cpu")
+    # )
+    # classifier.to(dist_util.dev())
+    # if args.classifier_use_fp16:
+    #     classifier.convert_to_fp16()
+    # classifier.eval()
 
-    # features_n = features_file['arr_0'].shape[0]
-    # features_p = features_file['arr_0']
-    # features_z = features_file['arr_1']
-    # labels_associated = features_file['arr_2']
-    def design_cond_fn(inputs, t, y=None, p_features=None, selected_indexes=None):
-        assert y is not None
-        with th.enable_grad():
-            x = inputs[0]
-            pred_xstart = inputs[1]
-            # off-the-shelf ResNet guided
-            pred_xstart = pred_xstart.detach().requires_grad_(True)
+    # cond_fn = clip_model.cond_fn
+    # cond_fn = clip_model.cond_fn([prompt] * batch_size, guidance_scale)
 
-            pred_xstart_r = ((pred_xstart + 1) * 127.).clamp(0, 255)/255.0
-            pred_xstart_r = center_crop_arr(pred_xstart_r, args.image_size)
-            pred_xstart_r = custom_normalize(pred_xstart_r, mean_imn, std_imn)
-
-            # p_features_selected = p_features[selected_indexes]
-            # match2 = similarity_match(p_features_selected, p_features.detach())
-
-
-            # resnet classifier
-            p_x_0 = resnet(pred_xstart_r)
-            match1 = similarity_match(p_x_0, p_features.detach())
-
-            logits = match1
-            # logits_t = match2
-            temperature1 = args.joint_temperature
-            temperature2 = temperature1 * args.margin_temperature_discount
-            numerator = th.exp(logits * temperature1)[range(len(logits)), selected_indexes.view(-1)].unsqueeze(1)
-            denominator2 = th.exp(logits * temperature2).sum(1, keepdims=True)
-            selected = th.log(numerator / denominator2)
-            # # temperature
-            # temperature1 = args.joint_temperature
-            # temperature2 = temperature1 * args.margin_temperature_discount
-            # numerator = th.exp(logits*temperature1)[range(len(logits)), y.view(-1)].unsqueeze(1)
-            # denominator2 = th.exp(logits*temperature2).sum(1, keepdims=True)
-            # selected = th.log(numerator / denominator2)
-            return th.autograd.grad(selected.sum(), pred_xstart_r)[0] * args.classifier_scale
 
     logger.log("Looking for previous file")
     checkpoint = os.path.join(output_images_folder, "samples_last.npz")
+    checkpoint_temp = os.path.join(output_images_folder, "samples_temp.npz")
     vis_images_folder = os.path.join(output_images_folder, "sample_images")
     os.makedirs(vis_images_folder, exist_ok=True)
     final_file = os.path.join(output_images_folder,
                               f"samples_{args.num_samples}x{args.image_size}x{args.image_size}x3.npz")
-
-
     if os.path.isfile(final_file):
         dist.barrier()
         logger.log("sampling complete")
@@ -242,43 +224,49 @@ def main(local_rank):
     if os.path.isfile(checkpoint):
         npzfile = np.load(checkpoint)
         all_images = list(npzfile['arr_0'])
-        all_labels = list(npzfile['arr_1'])
     else:
         all_images = []
-        all_labels = []
     logger.log(f"Number of current images: {len(all_images)}")
     logger.log("sampling...")
-    if args.image_size == 28:
-        img_channels = 1
-        num_class = 10
-    else:
-        img_channels = 3
-        num_class = NUM_CLASSES
+
+    guidance_scale = args.guidance_scale
+
+    caption_loader = load_data_caption_hfai(split="val", batch_size=args.batch_size)
+
+    caption_iter = iter(caption_loader)
     while len(all_images) * args.batch_size < args.num_samples:
-        model_kwargs = {}
-        n = args.batch_sizes
+        prompts = next(caption_iter)
+        while len(prompts) != args.batch_size:
+            prompts = next(caption_iter)
+        #
 
-        random_selected_indexes = np.random.randint(0, features_n, (n,), dtype=int)
-        p_features = th.from_numpy(features_p).to(dist_util.dev())
-        classes = th.from_numpy(labels_associated[random_selected_indexes]).to(dist_util.dev())
+        # print(len(prompts))
+        cond_fn = clip_model.cond_fn(prompts, guidance_scale)
 
-        model_kwargs["y"] = classes
-        model_kwargs["p_features"] = p_features
-        model_kwargs["selected_indexes"] = th.from_numpy(random_selected_indexes).to(dist_util.dev())
+        tokens = model.tokenizer.encode_batch(prompts)
+        tokens, mask = model.tokenizer.padded_tokens_and_mask_batch(
+            tokens, options_model['text_ctx']
+        )
+
+        model_kwargs = dict(
+            tokens=th.tensor(tokens, device=dist_util.dev()),
+            mask=th.tensor(mask, dtype=th.bool, device=dist_util.dev()),
+        )
 
         sample_fn = (
             diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop
         )
-        # classifier guidance
-        sample = sample_fn(
-            model_fn,
+        model.del_cache()
+        out = sample_fn(
+            model,
             (args.batch_size, 3, args.image_size, args.image_size),
-            gamma_factor=args.gamma_factor,
             clip_denoised=args.clip_denoised,
             model_kwargs=model_kwargs,
-            cond_fn=design_cond_fn,
+            cond_fn=cond_fn,
             device=dist_util.dev(),
-        )
+        )  # (B, 3, H, W)
+        model.del_cache()
+        sample = out
 
         if args.save_imgs_for_visualization and dist.get_rank() == 0 and (
                 len(all_images) // dist.get_world_size()) < 10:
@@ -291,35 +279,32 @@ def main(local_rank):
                 range=(-1, 1),
             )
 
-
         sample = ((sample + 1) * 127.5).clamp(0, 255).to(th.uint8)
-        sample = sample.permute(0, 2, 3, 1)
+        sample = sample.permute(0, 2, 3, 1)  # (B, H, W, 3)
         sample = sample.contiguous()
 
         gathered_samples = [th.zeros_like(sample) for _ in range(dist.get_world_size())]
         dist.all_gather(gathered_samples, sample)  # gather not supported with NCCL
-        batch_images = [sample.cpu().numpy() for sample in gathered_samples]
-        all_images.extend(batch_images)
-        gathered_labels = [th.zeros_like(classes) for _ in range(dist.get_world_size())]
-        dist.all_gather(gathered_labels, classes)
-        batch_labels = [labels.cpu().numpy() for labels in gathered_labels]
-        all_labels.extend(batch_labels)
+        all_images.extend([sample.cpu().numpy() for sample in gathered_samples])
+
         if dist.get_rank() == 0:
             if hfai.client.receive_suspend_command():
                 print("Receive suspend - good luck next run ^^")
                 hfai.client.go_suspend()
             logger.log(f"created {len(all_images) * args.batch_size} samples")
-            np.savez(checkpoint, np.stack(all_images), np.stack(all_labels))
+            np.savez(checkpoint_temp, np.stack(all_images))
+            if os.path.isfile(checkpoint):
+                os.remove(checkpoint)
+            os.rename(checkpoint_temp, checkpoint)
 
     arr = np.concatenate(all_images, axis=0)
     arr = arr[: args.num_samples]
-    label_arr = np.concatenate(all_labels, axis=0)
-    label_arr = label_arr[: args.num_samples]
+
     if dist.get_rank() == 0:
         shape_str = "x".join([str(x) for x in arr.shape])
         out_path = os.path.join(output_images_folder, f"samples_{shape_str}.npz")
         logger.log(f"saving to {out_path}")
-        np.savez(out_path, arr, label_arr)
+        np.savez(out_path, arr)
         os.remove(checkpoint)
 
     dist.barrier()
@@ -329,31 +314,21 @@ def main(local_rank):
 def create_argparser():
     defaults = dict(
         clip_denoised=True,
-        num_samples=10000,
-        log_dir=None,
-        fix_class=False,
-        fix_class_index=0,
+        num_samples=50000,
         batch_size=16,
         use_ddim=False,
-        model_path="",
-        classifier_path="",
-        classifier_scale=1.0,
-        classifier_type='resnet101',
-        softplus_beta=np.inf,
-        joint_temperature=1.0,
-        margin_temperature_discount=1.0,
-        gamma_factor=0.0,
-        logdir="runs",
+        guidance_scale=1.0,
+        save_imgs_for_visualization=True,
         fix_seed=False,
-        features="eval_models/imn128_mocov2/reps3.npz",
-        save_imgs_for_visualization=False,
-        k_closest=5,
+        specified_class=None,
+        logdir=""
     )
     defaults.update(model_and_diffusion_defaults())
-    defaults.update(simsiam_defaults())
+    # defaults.update(classifier_defaults())
     parser = argparse.ArgumentParser()
     add_dict_to_argparser(parser, defaults)
     return parser
+
 
 def similarity_match(pred, target, mean=False):
     pred_norm = th.nn.functional.normalize(pred, dim=1)
@@ -379,7 +354,7 @@ def find_closest_set(mean_vector, vectors, k=5):
     indexes_sorted = np.argsort(list_distances)
     return vectors[indexes_sorted[:k]], indexes_sorted[:k]
 
-def get_mean_closest_sup(features_p, labels, k=5):
+def get_mean_closest_sup(features_p, labels):
     n = features_p.shape[0]
     dict_p_classes = {}
     p_mean_vectors = []
@@ -393,11 +368,11 @@ def get_mean_closest_sup(features_p, labels, k=5):
     for key in dict_p_classes.keys():
         p_vectors = np.stack(dict_p_classes[key])
         p_mean = np.mean(p_vectors, axis=0)
-        labels_vectors.append(np.asarray([key] * k))
-        p_closest_vectors, indexes = find_closest_set(p_mean, p_vectors, k)
+        labels_vectors.append(np.asarray([key]))
+        p_closest_vectors = p_mean
         p_mean_vectors.append(p_closest_vectors)
 
-    return np.concatenate(p_mean_vectors), np.concatenate(labels_vectors)
+    return np.stack(p_mean_vectors), np.concatenate(labels_vectors)
 
 
 if __name__ == "__main__":

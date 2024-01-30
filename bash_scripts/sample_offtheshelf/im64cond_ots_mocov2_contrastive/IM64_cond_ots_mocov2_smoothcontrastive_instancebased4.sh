@@ -2,7 +2,7 @@
 
 export NCCL_P2P_DISABLE=1
 
-SAMPLE_FLAGS="--batch_size 220 --num_samples 50000 --timestep_respacing 250"
+SAMPLE_FLAGS="--batch_size 240 --num_samples 50000 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 2 --num_samples 4 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 2 --num_samples 4 --timestep_respacing 250"
 #SAMPLE_FLAGS="--batch_size 32 --num_samples 50000 --timestep_respacing 250"
@@ -24,13 +24,7 @@ cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
-<<<<<<< HEAD
-scales=(  "18.0" "0.001" "0.005")
-=======
-
-scales=( "0.001" "0.005")
-
->>>>>>> c5a612c7292a8da6b53d66b37630b668aa3a4c26
+scales=( "0.01" "0.005" )
 #scales=( "10.0"  )
 #scales=( "1.0"  )
 jointtemps=( "0.3")
