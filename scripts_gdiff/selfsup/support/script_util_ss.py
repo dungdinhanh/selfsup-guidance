@@ -559,6 +559,18 @@ def create_mocov2_selfsup(dim, pred_dim, image_size, base_model="resnet50", load
     return model
     pass
 
+def create_byol_selfsup(dim, pred_dim, image_size, base_model="resnet50", load_backbone=True):
+    # base_model = tmodels.__dict__['resnet50']
+    base_model = get_simsiam_basemodel(base_model)
+
+    model = base_model(num_classes=128)
+    dim_mlp = model.fc.weight.shape[1]
+    model.fc = nn.Sequential(
+        nn.Linear(dim_mlp, dim_mlp), nn.ReLU(), model.fc
+    )
+    return model
+    pass
+
 
 
 
@@ -622,6 +634,34 @@ def create_mocov2_and_diffusion(
     base_model="resnet50"
 ):
     simsiam = create_mocov2_selfsup(dim, pred_dim, image_size, base_model)
+
+    diffusion = create_gaussian_diffusion(
+        steps=diffusion_steps,
+        learn_sigma=learn_sigma,
+        noise_schedule=noise_schedule,
+        use_kl=use_kl,
+        predict_xstart=predict_xstart,
+        rescale_timesteps=rescale_timesteps,
+        rescale_learned_sigmas=rescale_learned_sigmas,
+        timestep_respacing=timestep_respacing,
+    )
+    return simsiam, diffusion
+
+def create_byol_and_diffusion(
+    image_size,
+    learn_sigma,
+    diffusion_steps,
+    noise_schedule,
+    timestep_respacing,
+    use_kl,
+    predict_xstart,
+    rescale_timesteps,
+    rescale_learned_sigmas,
+    pred_dim=512,
+    dim=2048,
+    base_model="resnet50"
+):
+    simsiam = create_byol_selfsup(dim, pred_dim, image_size, base_model)
 
     diffusion = create_gaussian_diffusion(
         steps=diffusion_steps,
