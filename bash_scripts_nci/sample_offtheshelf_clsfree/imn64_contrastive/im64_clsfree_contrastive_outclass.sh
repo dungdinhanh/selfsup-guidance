@@ -10,8 +10,8 @@
 #PBS -l wd
 #PBS -l storage=scratch/zg12
 #PBS -M adin6536@uni.sydney.edu.au
-#PBS -o output_nci/log5.txt
-#PBS -e output_nci/error5.txt
+#PBS -o output_nci/log_clsfree_contrastive_tunec10.txt
+#PBS -e output_nci/error_clsfree_contrastive_tunec10.txt
 
 module load use.own
 module load python3/3.9.2
@@ -42,7 +42,7 @@ eval ${cmd}
 
 #scales=( "0.05" "0.1" "0.2")
 scales=( "0.1")
-cscales=("10.0" "12.0" "14.0" "16.0" "18.0")
+cscales=("10.0" )
 #cscales=("10.0" "12.0" "14.0" "16.0" )
 #cscales=("1.0" )
 jointtemps=("1.0")

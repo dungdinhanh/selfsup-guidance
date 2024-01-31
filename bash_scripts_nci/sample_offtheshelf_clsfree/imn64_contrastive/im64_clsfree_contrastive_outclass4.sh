@@ -10,7 +10,8 @@
 #PBS -l wd
 #PBS -l storage=scratch/zg12
 #PBS -M adin6536@uni.sydney.edu.au
-
+#PBS -o output_nci/log_clsfree_contrastive_tunec16.txt
+#PBS -e output_nci/error_clsfree_contrastive_tunec16.txt
 
 module load use.own
 module load python3/3.9.2
@@ -41,6 +42,7 @@ eval ${cmd}
 
 #scales=( "0.05" "0.1" "0.2")
 scales=( "0.1")
+cscales=("14.0" )
 #cscales=("10.0" "12.0" "14.0" "16.0" )
 #cscales=("1.0" )
 jointtemps=("1.0")
@@ -50,14 +52,15 @@ storage_dir="/scratch/zg12/dd9648"
 
 for scale in "${scales[@]}"
 do
-
+  for cscale in "${cscales[@]}"
+  do
     for jt in "${jointtemps[@]}"
 do
 for mt in "${margintemps[@]}"
 do
   for kc in "${kcs[@]}"
   do
-cmd="WORLD_SIZE=1 RANK=0 MASTER_IP=127.0.0.1 MASTER_PORT=29510 MARSV2_WHOLE_LIFE_STATE=0 python3 script_odiff/classifier_free/classifier_free_sample2_contrastive_outclass.py $MODEL_FLAGS --cond_model_scale ${scale}  \
+cmd="WORLD_SIZE=1 RANK=0 MASTER_IP=127.0.0.1 MASTER_PORT=29810 MARSV2_WHOLE_LIFE_STATE=0 python3 script_odiff/classifier_free/classifier_free_sample2_contrastive_outclass.py $MODEL_FLAGS --cond_model_scale ${scale}  \
 --uncond_model_path ${storage_dir}/models/64x64_diffusion_unc.pt --classifier_type mocov2 \
  --features ${storage_dir}/eval_models/imn64_mocov2/reps3.npz --classifier_scale ${cscale}\
  --save_imgs_for_visualization True \
@@ -70,11 +73,13 @@ done
 done
 done
 done
-
+done
 
 
 for scale in "${scales[@]}"
 do
+  for cscale in "${cscales[@]}"
+  do
     for jt in "${jointtemps[@]}"
 do
 for mt in "${margintemps[@]}"
@@ -83,6 +88,7 @@ cmd="python3 evaluations/evaluator_tolog.py reference/VIRTUAL_imagenet64_labeled
  ${storage_dir}/runs/sampling_clsfree_version2_outclass/IMN64/contrastive/scale${scale}_cscale${cscale}_jt${jt}_mt${mt}/reference/samples_50000x64x64x3.npz"
 echo ${cmd}
 eval ${cmd}
+done
 done
 done
 done

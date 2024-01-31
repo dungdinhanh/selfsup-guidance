@@ -29,8 +29,8 @@ from guided_diffusion.script_util import (
     create_classifier
 )
 
-import hfai.client
-import hfai.multiprocessing
+# import hfai.client
+# import hfai.multiprocessing
 
 
 def center_crop_arr(images, image_size):
