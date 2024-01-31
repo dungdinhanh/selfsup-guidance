@@ -9,7 +9,8 @@ import numpy as np
 import torch as th
 import hfai.nccl.distributed as dist
 import torch.nn.functional as F
-import hfai
+# import hfai
+import hfai.multiprocessing
 from PIL import Image
 import time
 import numpy as np
@@ -160,7 +161,7 @@ def main(local_rank):
     if dist.get_rank() == 0:
         print('args:', args)
 
-    def model_fn(x, t, y=None, p_features=None, selected_indexes=None, mask=None):
+    def model_fn(x, t, y=None, p_features=None, selected_indexes=None):
         assert y is not None
         return model(x, t, y if args.class_cond else None)
 
@@ -170,7 +171,7 @@ def main(local_rank):
 
     # features loading
     features_folder = os.path.dirname(args.features)
-    features_mean_sup_file = os.path.join(features_folder, f"reps3_mean_sup_closest{args.k_closest}_set.npz")
+    features_mean_sup_file = os.path.join(features_folder, f"reps3_mean_sup_random{args.k_closest}_set.npz")
     if not os.path.isfile(features_mean_sup_file):
         features_file = np.load(args.features)
         # features_n = features_file['arr_0'].shape[0]
@@ -192,7 +193,7 @@ def main(local_rank):
     # features_p = features_file['arr_0']
     # features_z = features_file['arr_1']
     # labels_associated = features_file['arr_2']
-    def design_cond_fn(inputs, t, y=None, p_features=None, selected_indexes=None, mask=None):
+    def design_cond_fn(inputs, t, y=None, p_features=None, selected_indexes=None):
         assert y is not None
         with th.enable_grad():
             x = inputs[0]
@@ -212,7 +213,7 @@ def main(local_rank):
             p_x_0 = resnet(pred_xstart_r)
             match1 = similarity_match(p_x_0, p_features.detach())
 
-            logits = match1 * mask
+            logits = match1
             # logits_t = match2
             temperature1 = args.joint_temperature
             temperature2 = temperature1 * args.margin_temperature_discount
@@ -262,16 +263,9 @@ def main(local_rank):
         p_features = th.from_numpy(features_p).to(dist_util.dev())
         classes = th.from_numpy(labels_associated[random_selected_indexes]).to(dist_util.dev())
 
-        mask = get_mask(labels_associated, random_selected_indexes)
-        mask = th.from_numpy(mask).to(dist_util.dev())
-
-        # for i in range(n):
-
-
         model_kwargs["y"] = classes
         model_kwargs["p_features"] = p_features
         model_kwargs["selected_indexes"] = th.from_numpy(random_selected_indexes).to(dist_util.dev())
-        model_kwargs["mask"] = mask
 
         sample_fn = (
             diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop
@@ -372,19 +366,20 @@ def similarity_match(pred, target, mean=False):
         loss = loss.sum()
     return loss
 
-def find_closest_set(mean_vector, vectors, k=5):
+def find_random_set(mean_vector, vectors, k=5):
     n = vectors.shape[0]
-    list_distances = []
-
-    for i in range(n):
-        # print(vectors[i])
-        # print(mean_vector)
-        distance = np.linalg.norm(vectors[i] - mean_vector)
-        list_distances.append(distance)
-
-    list_distances = np.asarray(list_distances)
-    indexes_sorted = np.argsort(list_distances)
-    return vectors[indexes_sorted[:k]], indexes_sorted[:k]
+    # list_distances = []
+    #
+    # for i in range(n):
+    #     # print(vectors[i])
+    #     # print(mean_vector)
+    #     distance = np.linalg.norm(vectors[i] - mean_vector)
+    #     list_distances.append(distance)
+    #
+    # list_distances = np.asarray(list_distances)
+    # indexes_sorted = np.argsort(list_distances)
+    indexes = np.random.choice(n, k)
+    return vectors[indexes], indexes
 
 def get_mean_closest_sup(features_p, labels, k=5):
     n = features_p.shape[0]
@@ -401,22 +396,12 @@ def get_mean_closest_sup(features_p, labels, k=5):
         p_vectors = np.stack(dict_p_classes[key])
         p_mean = np.mean(p_vectors, axis=0)
         labels_vectors.append(np.asarray([key] * k))
-        p_closest_vectors, indexes = find_closest_set(p_mean, p_vectors, k)
+        p_closest_vectors, indexes = find_random_set(p_mean, p_vectors, k)
         p_mean_vectors.append(p_closest_vectors)
 
     return np.concatenate(p_mean_vectors), np.concatenate(labels_vectors)
 
-def get_mask(labels_list, selected_indexes):
-    mask = np.ones((selected_indexes.shape[0], labels_list.shape[0]))
-    for i in range(selected_indexes.shape[0]):
-        selected_index = selected_indexes[i]
-        list_label_selected = np.where(labels_list == labels_list[selected_index])
-        mask[i, list_label_selected] *= 0.0
-        mask[i, selected_index] = 1.0
-    return mask
-    pass
-
 
 if __name__ == "__main__":
     ngpus = th.cuda.device_count()
-    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=True)
+    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=False)

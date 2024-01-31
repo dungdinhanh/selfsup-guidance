@@ -1,3 +1,4 @@
+
 #!/bin/bash
 
 
@@ -7,7 +8,7 @@ MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond True --diffusion_steps
 
 
 SAMPLE_FLAGS="--batch_size 1 --num_samples 1 --timestep_respacing 250 --save_imgs_for_visualization True --fix_class True \
-  --seed 219"
+  --seed 300"
 #SAMPLE_FLAGS="--batch_size 2 --num_samples 2 --timestep_respacing 250"
 
 
@@ -24,22 +25,8 @@ echo ${cmd}
 eval ${cmd}
 
 #scales=( "200.0" "0.0")
-scales=( "0.0" "20.0" "50.0" "80.0"  )
-#scales=( "30.0" "35.0" "40.0"  )
-#scales=( )
-#scales=( "90.0" )
-#scales=( "85.0" "95.0" )
-#scales=( "82.0" "84.0" "86.0" "88.0" )
-#scales=(  "50.0" "100.0" )
-#scales=(  "120.0" "130.0" "140.0" "150.0" )
-#scales=(   "45.0"  "55.0")
-#scales=(   "40.0"  "42.0")
-#scales=(   "30.0"  "35.0")
-#scales=(   "56.0" "57.0" "58.0" "59.0")
-#scales=(   "50.0" "52.0" "54.0")
-#scales=(  "20.0" )
-#scales=(  "40.0" )
-#scales=(  "30.0" )
+scales=( "0.0"  )
+
 
 #scales=( "265.0" "267.0" "268.0"  "275.0" "280.0" "290.0" "295.0" "300.0" "310.0" "320.0" "340.0" "360.0" "370.0" "380.0" "400.0"  )
 #scales=( )
@@ -48,10 +35,9 @@ scales=( "0.0" "20.0" "50.0" "80.0"  )
 #scales=( "350.0" "355.0" "357.0" "363.0" )
 jointtemps=( "2.0" )
 kcs=( "5" )
-kchosens=( "4")
-#kchosens=(  "2" )
+kchosens=(  "1" "4" )
 #kchosens=(   "17")
-fixclasses=("217")
+fixclasses=("255")
 
 
 for scale in "${scales[@]}"
