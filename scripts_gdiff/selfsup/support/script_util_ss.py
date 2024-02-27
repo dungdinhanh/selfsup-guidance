@@ -559,6 +559,40 @@ def create_mocov2_selfsup(dim, pred_dim, image_size, base_model="resnet50", load
     return model
     pass
 
+def create_mocov3_selfsup(dim, pred_dim, image_size, base_model="resnet50", load_backbone=True):
+    # base_model = tmodels.__dict__['resnet50']
+    base_model = get_simsiam_basemodel(base_model)
+
+    model = base_model(4096)
+    hidden_dim = model.fc.weight.shape[1]
+    model.fc = build_mlp(2, hidden_dim, 4096, 256)
+    # dim_mlp = model.fc.weight.shape[1]
+    # print(dim_mlp)
+    # exit(0)
+    # model.fc = nn.Sequential(
+    #     nn.Linear(dim_mlp, dim_mlp*2), nn.ReLU(), model.fc
+    # )
+    return model
+    pass
+
+def build_mlp(num_layers, input_dim, mlp_dim, output_dim, last_bn=True):
+    mlp = []
+    for l in range(num_layers):
+        dim1 = input_dim if l == 0 else mlp_dim
+        dim2 = output_dim if l == num_layers - 1 else mlp_dim
+
+        mlp.append(nn.Linear(dim1, dim2, bias=False))
+
+        if l < num_layers - 1:
+            mlp.append(nn.BatchNorm1d(dim2))
+            mlp.append(nn.ReLU(inplace=True))
+        elif last_bn:
+            # follow SimCLR's design: https://github.com/google-research/simclr/blob/master/model_util.py#L157
+            # for simplicity, we further removed gamma in BN
+            mlp.append(nn.BatchNorm1d(dim2, affine=False))
+
+    return nn.Sequential(*mlp)
+
 def create_byol_selfsup(dim, pred_dim, image_size, base_model="resnet50", load_backbone=True):
     # base_model = tmodels.__dict__['resnet50']
     base_model = get_simsiam_basemodel(base_model)
@@ -634,6 +668,34 @@ def create_mocov2_and_diffusion(
     base_model="resnet50"
 ):
     simsiam = create_mocov2_selfsup(dim, pred_dim, image_size, base_model)
+
+    diffusion = create_gaussian_diffusion(
+        steps=diffusion_steps,
+        learn_sigma=learn_sigma,
+        noise_schedule=noise_schedule,
+        use_kl=use_kl,
+        predict_xstart=predict_xstart,
+        rescale_timesteps=rescale_timesteps,
+        rescale_learned_sigmas=rescale_learned_sigmas,
+        timestep_respacing=timestep_respacing,
+    )
+    return simsiam, diffusion
+
+def create_mocov3_and_diffusion(
+    image_size,
+    learn_sigma,
+    diffusion_steps,
+    noise_schedule,
+    timestep_respacing,
+    use_kl,
+    predict_xstart,
+    rescale_timesteps,
+    rescale_learned_sigmas,
+    pred_dim=512,
+    dim=2048,
+    base_model="resnet50"
+):
+    simsiam = create_mocov3_selfsup(dim, pred_dim, image_size, base_model)
 
     diffusion = create_gaussian_diffusion(
         steps=diffusion_steps,

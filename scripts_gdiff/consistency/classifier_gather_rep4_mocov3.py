@@ -26,7 +26,7 @@ from scripts_gdiff.selfsup.support.script_util_ss import (
     add_dict_to_argparser,
     args_to_dict,
     classifier_and_diffusion_defaults,
-    create_mocov2_and_diffusion,
+    create_mocov3_and_diffusion,
     simsiam_and_diffusion_defaults
 )
 from guided_diffusion.train_util import parse_resume_step_from_filename, log_loss_dict
@@ -94,7 +94,7 @@ def main(local_rank):
         logger.configure(rank=dist.get_rank())
     logger.log("creating model and diffusion...")
 
-    model, diffusion = create_mocov2_and_diffusion(
+    model, diffusion = create_mocov3_and_diffusion(
         **args_to_dict(args, simsiam_and_diffusion_defaults().keys())
     )
     model.to(dist_util.dev())
@@ -108,7 +108,7 @@ def main(local_rank):
 
 
     model.load_state_dict(
-        dist_util.load_mocov2(args.p_classifier))
+        dist_util.load_mocov3(args.p_classifier))
 
     # Needed for creating correct EMAs and fp16 parameters.
     dist_util.sync_params(model.parameters())

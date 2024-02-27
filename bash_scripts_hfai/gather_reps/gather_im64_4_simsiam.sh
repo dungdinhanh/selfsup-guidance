@@ -15,8 +15,8 @@ echo ${cmd}
 eval ${cmd}
 
 
-cmd="CUDA_VISIBLE_DEVICES=0 python scripts_gdiff/consistency/classifier_gather_rep4_byol.py --data_dir path/to/imagenet \
---logdir eval_models/imn64_byol --p_classifier eval_models/byol_resnet50_16xb256-coslr-200e_in1k_20220825-de817331.pth --image_size 64\
+cmd="CUDA_VISIBLE_DEVICES=0 python scripts_gdiff/consistency/classifier_gather_rep4_simsiam.py --data_dir path/to/imagenet \
+--logdir eval_models/imn64_simsiam --p_classifier eval_models/simsiam_0099.pth.tar --image_size 64 \
  $TRAIN_FLAGS "
 echo ${cmd}
 eval ${cmd}

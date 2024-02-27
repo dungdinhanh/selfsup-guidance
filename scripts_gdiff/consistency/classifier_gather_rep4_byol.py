@@ -105,7 +105,7 @@ def main(local_rank):
 
 
     model.load_state_dict(
-        dist_util.load_simsiam(args.p_classifier))
+        dist_util.load_byol(args.p_classifier))
 
     # Needed for creating correct EMAs and fp16 parameters.
     dist_util.sync_params(model.parameters())
