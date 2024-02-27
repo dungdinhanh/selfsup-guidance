@@ -19,39 +19,16 @@ import torchvision.models as models
 from scripts_gdiff.selfsup.support.script_util_ss import create_simsiam_selfsup, simsiam_defaults, create_mocov2_selfsup
 from scripts_gdiff.selfsup.support.dist_util import load_simsiam, load_mocov2
 from off_guided_diffusion import dist_util, logger
-from script_odiff.analysis.support.script_util_analyse import (
+from off_guided_diffusion.script_util import (
     NUM_CLASSES,
     model_and_diffusion_defaults,
     classifier_defaults,
-    create_model_and_diffusion_analyse,
+    create_model_and_diffusion,
     create_classifier,
     add_dict_to_argparser,
     args_to_dict,
 )
 from torchvision import utils
-import glob
-
-from PIL import Image
-
-
-def center_crop_pil(pil_image, image_size):
-    # We are not on a new enough PIL to support the `reducing_gap`
-    # argument, which uses BOX downsampling at powers of two first.
-    # Thus, we do it by hand to improve downsample quality.
-    while min(*pil_image.size) >= 2 * image_size:
-        pil_image = pil_image.resize(
-            tuple(x // 2 for x in pil_image.size), resample=Image.BOX
-        )
-
-    scale = image_size / min(*pil_image.size)
-    pil_image = pil_image.resize(
-        tuple(round(x * scale) for x in pil_image.size), resample=Image.BICUBIC
-    )
-
-    arr = np.array(pil_image)
-    crop_y = (arr.shape[0] - image_size) // 2
-    crop_x = (arr.shape[1] - image_size) // 2
-    return arr[crop_y : crop_y + image_size, crop_x : crop_x + image_size]
 
 def center_crop_arr(images, image_size):
     # We are not on a new enough PIL to support the `reducing_gap`
@@ -108,7 +85,7 @@ def main(local_rank):
     os.makedirs(output_images_folder, exist_ok=True)
 
     logger.log("creating model and diffusion...")
-    model, diffusion = create_model_and_diffusion_analyse(
+    model, diffusion = create_model_and_diffusion(
         **args_to_dict(args, model_and_diffusion_defaults().keys())
     )
     model.load_state_dict(
@@ -220,7 +197,6 @@ def main(local_rank):
         with th.enable_grad():
             x = inputs[0]
             pred_xstart = inputs[1]
-            x_t_real = inputs[2]
             # if True:
             #     np_y = y.detach().cpu().numpy()
             #     print(np_y)
@@ -239,43 +215,14 @@ def main(local_rank):
                 normalize=True,
                 range=(-1, 1),
             )
-
-            utils.save_image(
-                x_t_real.detach().clamp(-1, 1),
-                os.path.join(vis_images_folder_xt_real, "samples_{}.png".format(t[0] + 1)),
-                nrow=1,
-                normalize=True,
-                range=(-1, 1)
-            )
             # off-the-shelf ResNet guided
-            pred_xstart = pred_xstart.detach().requires_grad_(True)
 
-            pred_xstart_r = ((pred_xstart + 1) * 127.).clamp(0, 255)/255.0
-            pred_xstart_r = center_crop_arr(pred_xstart_r, args.image_size)
-            pred_xstart_r = custom_normalize(pred_xstart_r, mean_imn, std_imn)
-
-            # p_features_selected = p_features[selected_indexes]
-            # match2 = similarity_match(p_features_selected, p_features.detach())
-
-
-            # resnet classifier
-            p_x_0 = resnet(pred_xstart_r)
-            match1 = similarity_match(p_x_0, p_features.detach())
-
-            logits = match1
-            # logits_t = match2
-            temperature1 = args.joint_temperature
-            temperature2 = temperature1 * args.margin_temperature_discount
-            numerator = th.exp(logits * temperature1)[range(len(logits)), selected_indexes.view(-1)].unsqueeze(1)
-            denominator2 = th.exp(logits * temperature2).sum(1, keepdims=True)
-            selected = th.log(numerator / denominator2)
-            # # temperature
-            # temperature1 = args.joint_temperature
-            # temperature2 = temperature1 * args.margin_temperature_discount
-            # numerator = th.exp(logits*temperature1)[range(len(logits)), y.view(-1)].unsqueeze(1)
-            # denominator2 = th.exp(logits*temperature2).sum(1, keepdims=True)
-            # selected = th.log(numerator / denominator
-            return th.autograd.grad(selected.sum(), pred_xstart_r)[0] * args.classifier_scale
+            x_in = x.detach().requires_grad_(True)
+            logits = classifier(x_in, t)
+            log_probs = F.log_softmax(logits, dim=-1)
+            selected = log_probs[range(len(logits)), y.view(-1)]
+            return th.autograd.grad(selected.sum(), x_in)[0] * args.classifier_scale
+        # return th.autograd.grad(selected.sum(), x_in)[0] * args.classifier_scale
 
     logger.log("Looking for previous file")
     checkpoint = os.path.join(output_images_folder, "samples_last.npz")
@@ -289,8 +236,6 @@ def main(local_rank):
     final_file = os.path.join(output_images_folder,
                               f"samples_{args.num_samples}x{args.image_size}x{args.image_size}x3.npz")
 
-    vis_images_folder_xt_real = os.path.join(vis_images_folder, "xt_real")
-    os.makedirs(vis_images_folder_xt_real, exist_ok=True)
 
     if os.path.isfile(final_file):
         dist.barrier()
@@ -336,19 +281,6 @@ def main(local_rank):
         model_kwargs["y"] = classes
         model_kwargs["p_features"] = p_features
         model_kwargs["selected_indexes"] = th.from_numpy(random_selected_indexes).to(dist_util.dev())
-        if args.classifier_scale == 0.0:
-            # load image
-            image_dir = os.path.join("/home/dzung/Documents/Sydney_PhD/neurips2023/images_stanford/Images_256", f"{classes[0]}")
-            image_file = os.path.join(image_dir, f"image{classes[0]}_78.png")
-            img = Image.open(image_file)
-            arr = center_crop_pil(img, 256)
-            img = arr.astype(np.float32) / 127.5 - 1
-            img = np.transpose(img, [2, 0, 1])
-            img = th.from_numpy(img).to(dist_util.dev())
-            diffusion.r_image = img
-            pass
-        else:
-            diffusion.r_image = None
 
         sample_fn = (
             diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop
@@ -420,6 +352,7 @@ def create_argparser():
     )
     defaults.update(model_and_diffusion_defaults())
     defaults.update(simsiam_defaults())
+    defaults.update(classifier_defaults())
     parser = argparse.ArgumentParser()
     add_dict_to_argparser(parser, defaults)
     return parser

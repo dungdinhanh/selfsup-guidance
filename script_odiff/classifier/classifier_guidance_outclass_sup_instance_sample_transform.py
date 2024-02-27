@@ -19,39 +19,16 @@ import torchvision.models as models
 from scripts_gdiff.selfsup.support.script_util_ss import create_simsiam_selfsup, simsiam_defaults, create_mocov2_selfsup
 from scripts_gdiff.selfsup.support.dist_util import load_simsiam, load_mocov2
 from off_guided_diffusion import dist_util, logger
-from script_odiff.analysis.support.script_util_analyse import (
+from off_guided_diffusion.script_util import (
     NUM_CLASSES,
     model_and_diffusion_defaults,
     classifier_defaults,
-    create_model_and_diffusion_analyse,
+    create_model_and_diffusion,
     create_classifier,
     add_dict_to_argparser,
     args_to_dict,
 )
 from torchvision import utils
-import glob
-
-from PIL import Image
-
-
-def center_crop_pil(pil_image, image_size):
-    # We are not on a new enough PIL to support the `reducing_gap`
-    # argument, which uses BOX downsampling at powers of two first.
-    # Thus, we do it by hand to improve downsample quality.
-    while min(*pil_image.size) >= 2 * image_size:
-        pil_image = pil_image.resize(
-            tuple(x // 2 for x in pil_image.size), resample=Image.BOX
-        )
-
-    scale = image_size / min(*pil_image.size)
-    pil_image = pil_image.resize(
-        tuple(round(x * scale) for x in pil_image.size), resample=Image.BICUBIC
-    )
-
-    arr = np.array(pil_image)
-    crop_y = (arr.shape[0] - image_size) // 2
-    crop_x = (arr.shape[1] - image_size) // 2
-    return arr[crop_y : crop_y + image_size, crop_x : crop_x + image_size]
 
 def center_crop_arr(images, image_size):
     # We are not on a new enough PIL to support the `reducing_gap`
@@ -83,7 +60,7 @@ def main(local_rank):
 
     if args.fix_seed:
         import random
-        seed = args.seed + dist.get_rank()
+        seed = 23333 + dist.get_rank()
         np.random.seed(seed)
         th.manual_seed(seed)  # CPU随机种子确定
         th.cuda.manual_seed(seed)  # GPU随机种子确定
@@ -102,13 +79,25 @@ def main(local_rank):
         "logs",
     )
 
+    if args.server in ["lab", "labserver", "nci"]:
+        if args.server == "lab":
+            source_path = "."
+        elif args.server == "labserver":
+            source_path = "/hdd/dungda/selfsup-guidance/"
+        elif args.server == "nci":
+            source_path = "/scratch/zg12/dd9648/"
+        else:
+            source_path = "./"
+    else:
+        source_path = "./"
+
     logger.configure(save_folder, rank=dist.get_rank())
 
-    output_images_folder = args.logdir
+    output_images_folder = os.path.join(args.logdir, "reference")
     os.makedirs(output_images_folder, exist_ok=True)
 
     logger.log("creating model and diffusion...")
-    model, diffusion = create_model_and_diffusion_analyse(
+    model, diffusion = create_model_and_diffusion(
         **args_to_dict(args, model_and_diffusion_defaults().keys())
     )
     model.load_state_dict(
@@ -131,7 +120,7 @@ def main(local_rank):
             classifier.convert_to_fp16()
         classifier.eval()
     elif args.classifier_type=='simsiam':
-        resnet_address = 'eval_models/simsiam_0099.pth.tar'
+        resnet_address = os.path.join(source_path, 'eval_models/simsiam_0099.pth.tar')
         resnet = create_simsiam_selfsup(**args_to_dict(args, simsiam_defaults().keys()))
         for param in resnet.parameters():
             param.required_grad = False
@@ -140,7 +129,7 @@ def main(local_rank):
         resnet.eval()
         resnet.sampling=True
     elif args.classifier_type=='mocov2':
-        resnet_address = 'eval_models/moco_v2_800ep_pretrain.pth.tar'
+        resnet_address = os.path.join(source_path, 'eval_models/moco_v2_800ep_pretrain.pth.tar')
         resnet = create_mocov2_selfsup(**args_to_dict(args, simsiam_defaults().keys()))
         for param in resnet.parameters():
             param.required_grad = False
@@ -150,10 +139,10 @@ def main(local_rank):
         resnet.sampling=True
     else:
         if args.classifier_type == 'resnet50':
-            resnet_address = 'eval_models/resnet50-19c8e357.pth'
+            resnet_address = os.path.join(source_path, 'eval_models/resnet50-19c8e357.pth')
             resnet = models.resnet50()
         elif args.classifier_type == 'resnet101':
-            resnet_address = 'eval_models/resnet101-5d3b4d8f.pth'
+            resnet_address = os.path.join(source_path, 'eval_models/resnet101-5d3b4d8f.pth')
             resnet = models.resnet101()
 
 
@@ -180,10 +169,19 @@ def main(local_rank):
     args.margin_temperature_discount = float(args.margin_temperature_discount)
     args.gamma_factor = float(args.gamma_factor)
 
+    classifier = create_classifier(**args_to_dict(args, classifier_defaults().keys()))
+    classifier.load_state_dict(
+        dist_util.load_state_dict(args.classifier_path, map_location="cpu")
+    )
+    classifier.to(dist_util.dev())
+    if args.classifier_use_fp16:
+        classifier.convert_to_fp16()
+    classifier.eval()
+
     if dist.get_rank() == 0:
         print('args:', args)
 
-    def model_fn(x, t, y=None, p_features=None, selected_indexes=None):
+    def model_fn(x, t, y=None, p_features=None, selected_indexes=None, mask=None):
         assert y is not None
         return model(x, t, y if args.class_cond else None)
 
@@ -215,38 +213,11 @@ def main(local_rank):
     # features_p = features_file['arr_0']
     # features_z = features_file['arr_1']
     # labels_associated = features_file['arr_2']
-    def design_cond_fn(inputs, t, y=None, p_features=None, selected_indexes=None):
+    def design_cond_fn(inputs, t, y=None, p_features=None, selected_indexes=None, mask=None):
         assert y is not None
         with th.enable_grad():
             x = inputs[0]
             pred_xstart = inputs[1]
-            x_t_real = inputs[2]
-            # if True:
-            #     np_y = y.detach().cpu().numpy()
-            #     print(np_y)
-            utils.save_image(
-                x.detach().clamp(-1, 1),
-                os.path.join(vis_images_folder_xt, "samples_{}.png".format(t[0] + 1)),
-                nrow=1,
-                normalize=True,
-                range=(-1, 1),
-            )
-
-            utils.save_image(
-                pred_xstart.detach().clamp(-1, 1),
-                os.path.join(vis_images_folder_x0, "samples_{}.png".format(t[0] + 1)),
-                nrow=1,
-                normalize=True,
-                range=(-1, 1),
-            )
-
-            utils.save_image(
-                x_t_real.detach().clamp(-1, 1),
-                os.path.join(vis_images_folder_xt_real, "samples_{}.png".format(t[0] + 1)),
-                nrow=1,
-                normalize=True,
-                range=(-1, 1)
-            )
             # off-the-shelf ResNet guided
             pred_xstart = pred_xstart.detach().requires_grad_(True)
 
@@ -262,7 +233,7 @@ def main(local_rank):
             p_x_0 = resnet(pred_xstart_r)
             match1 = similarity_match(p_x_0, p_features.detach())
 
-            logits = match1
+            logits = match1 * mask
             # logits_t = match2
             temperature1 = args.joint_temperature
             temperature2 = temperature1 * args.margin_temperature_discount
@@ -274,23 +245,23 @@ def main(local_rank):
             # temperature2 = temperature1 * args.margin_temperature_discount
             # numerator = th.exp(logits*temperature1)[range(len(logits)), y.view(-1)].unsqueeze(1)
             # denominator2 = th.exp(logits*temperature2).sum(1, keepdims=True)
-            # selected = th.log(numerator / denominator
-            return th.autograd.grad(selected.sum(), pred_xstart_r)[0] * args.classifier_scale
+            # selected = th.log(numerator / denominator2)
+            grad_ots = th.autograd.grad(selected.sum(), pred_xstart_r)[0]
+
+            x_in = x.detach().requires_grad_(True)
+            logits = classifier(x_in, t)
+            log_probs = F.log_softmax(logits, dim=-1)
+            selected_cls = log_probs[range(len(logits)), y.view(-1)]
+            grad_cls = th.autograd.grad(selected_cls.sum(), x_in)[0]
+            return grad_cls * args.classifier_scale + grad_ots * args.ots_scale
 
     logger.log("Looking for previous file")
     checkpoint = os.path.join(output_images_folder, "samples_last.npz")
     vis_images_folder = os.path.join(output_images_folder, "sample_images")
     os.makedirs(vis_images_folder, exist_ok=True)
-    vis_images_folder_xt = os.path.join(vis_images_folder, "xt")
-    os.makedirs(vis_images_folder_xt, exist_ok=True)
-
-    vis_images_folder_x0 = os.path.join(vis_images_folder, "x0")
-    os.makedirs(vis_images_folder_x0, exist_ok=True)
     final_file = os.path.join(output_images_folder,
                               f"samples_{args.num_samples}x{args.image_size}x{args.image_size}x3.npz")
 
-    vis_images_folder_xt_real = os.path.join(vis_images_folder, "xt_real")
-    os.makedirs(vis_images_folder_xt_real, exist_ok=True)
 
     if os.path.isfile(final_file):
         dist.barrier()
@@ -314,41 +285,21 @@ def main(local_rank):
     while len(all_images) * args.batch_size < args.num_samples:
         model_kwargs = {}
         n = args.batch_size
-        if not args.fix_class:
-            random_selected_indexes = np.random.randint(0, features_n, (n,), dtype=int)
 
-        else:
-            # find index
-            class_indexes = np.where(labels_associated == args.fix_class_index)[0]
-            print(class_indexes)
-            random_selected_indexes = np.random.randint(class_indexes[0] + args.k_chosen,
-                                                        class_indexes[0] + args.k_chosen + 1,
-                                                        (n,), dtype=int)
-            print(random_selected_indexes)
+        random_selected_indexes = np.random.randint(0, features_n, (n,), dtype=int)
         p_features = th.from_numpy(features_p).to(dist_util.dev())
-        # print(p_features)
-        # print(labels_associated)
-        # exit(0)
         classes = th.from_numpy(labels_associated[random_selected_indexes]).to(dist_util.dev())
-        print(classes[0])
+
+        mask = get_mask(labels_associated, random_selected_indexes)
+        mask = th.from_numpy(mask).to(dist_util.dev())
+
+        # for i in range(n):
 
 
         model_kwargs["y"] = classes
         model_kwargs["p_features"] = p_features
         model_kwargs["selected_indexes"] = th.from_numpy(random_selected_indexes).to(dist_util.dev())
-        if args.classifier_scale == 0.0:
-            # load image
-            image_dir = os.path.join("/home/dzung/Documents/Sydney_PhD/neurips2023/images_stanford/Images_256", f"{classes[0]}")
-            image_file = os.path.join(image_dir, f"image{classes[0]}_78.png")
-            img = Image.open(image_file)
-            arr = center_crop_pil(img, 256)
-            img = arr.astype(np.float32) / 127.5 - 1
-            img = np.transpose(img, [2, 0, 1])
-            img = th.from_numpy(img).to(dist_util.dev())
-            diffusion.r_image = img
-            pass
-        else:
-            diffusion.r_image = None
+        model_kwargs["mask"] = mask
 
         sample_fn = (
             diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop
@@ -374,6 +325,8 @@ def main(local_rank):
                 normalize=True,
                 range=(-1, 1),
             )
+
+
         sample = ((sample + 1) * 127.5).clamp(0, 255).to(th.uint8)
         sample = sample.permute(0, 2, 3, 1)
         sample = sample.contiguous()
@@ -386,8 +339,23 @@ def main(local_rank):
         dist.all_gather(gathered_labels, classes)
         batch_labels = [labels.cpu().numpy() for labels in gathered_labels]
         all_labels.extend(batch_labels)
+        if dist.get_rank() == 0:
+            if hfai.client.receive_suspend_command():
+                print("Receive suspend - good luck next run ^^")
+                hfai.client.go_suspend()
+            logger.log(f"created {len(all_images) * args.batch_size} samples")
+            np.savez(checkpoint, np.stack(all_images), np.stack(all_labels))
 
-
+    arr = np.concatenate(all_images, axis=0)
+    arr = arr[: args.num_samples]
+    label_arr = np.concatenate(all_labels, axis=0)
+    label_arr = label_arr[: args.num_samples]
+    if dist.get_rank() == 0:
+        shape_str = "x".join([str(x) for x in arr.shape])
+        out_path = os.path.join(output_images_folder, f"samples_{shape_str}.npz")
+        logger.log(f"saving to {out_path}")
+        np.savez(out_path, arr, label_arr)
+        os.remove(checkpoint)
 
     dist.barrier()
     logger.log("sampling complete")
@@ -415,11 +383,12 @@ def create_argparser():
         features="eval_models/imn128_mocov2/reps3.npz",
         save_imgs_for_visualization=False,
         k_closest=5,
-        seed=23333,
-        k_chosen=2,
+        ots_scale=1.0,
+        server="lab",
     )
     defaults.update(model_and_diffusion_defaults())
     defaults.update(simsiam_defaults())
+    defaults.update(classifier_defaults())
     parser = argparse.ArgumentParser()
     add_dict_to_argparser(parser, defaults)
     return parser
@@ -468,7 +437,17 @@ def get_mean_closest_sup(features_p, labels, k=5):
 
     return np.concatenate(p_mean_vectors), np.concatenate(labels_vectors)
 
+def get_mask(labels_list, selected_indexes):
+    mask = np.ones((selected_indexes.shape[0], labels_list.shape[0]))
+    for i in range(selected_indexes.shape[0]):
+        selected_index = selected_indexes[i]
+        list_label_selected = np.where(labels_list == labels_list[selected_index])
+        mask[i, list_label_selected] *= 0.0
+        mask[i, selected_index] = 1.0
+    return mask
+    pass
+
 
 if __name__ == "__main__":
     ngpus = th.cuda.device_count()
-    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=False)
+    th.multiprocessing.spawn(main, args=(), nprocs=ngpus)
