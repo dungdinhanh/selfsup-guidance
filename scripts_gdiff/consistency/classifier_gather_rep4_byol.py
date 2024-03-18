@@ -26,7 +26,7 @@ from scripts_gdiff.selfsup.support.script_util_ss import (
     add_dict_to_argparser,
     args_to_dict,
     classifier_and_diffusion_defaults,
-    create_mocov2_and_diffusion,
+    create_byol_and_diffusion,
     simsiam_and_diffusion_defaults
 )
 from guided_diffusion.train_util import parse_resume_step_from_filename, log_loss_dict
@@ -46,8 +46,6 @@ def center_crop_arr(images, image_size):
 
 def custom_normalize(images, mean, std):
     # Check if the input tensor has the same number of channels as the mean and std
-    # print(images.shape)
-    # exit(0)
     if images.size(1) != len(mean) or images.size(1) != len(std):
         raise ValueError("The number of channels in the input tensor must match the length of mean and std.")
     images = images.to(th.float)
@@ -94,11 +92,10 @@ def main(local_rank):
         logger.configure(rank=dist.get_rank())
     logger.log("creating model and diffusion...")
 
-    model, diffusion = create_mocov2_and_diffusion(
+    model, diffusion = create_byol_and_diffusion(
         **args_to_dict(args, simsiam_and_diffusion_defaults().keys())
     )
     model.to(dist_util.dev())
-
     if args.noised:
         schedule_sampler = create_named_schedule_sampler(
             args.schedule_sampler, diffusion
@@ -108,7 +105,7 @@ def main(local_rank):
 
 
     model.load_state_dict(
-        dist_util.load_mocov2(args.p_classifier))
+        dist_util.load_byol(args.p_classifier))
 
     # Needed for creating correct EMAs and fp16 parameters.
     dist_util.sync_params(model.parameters())
@@ -160,8 +157,8 @@ def main(local_rank):
             sub_batch = center_crop_arr(sub_batch, args.image_size)
             sub_batch = custom_normalize(sub_batch, mean_imn, std_imn)
             sub_batch = sub_batch.to(dist_util.dev())
-            p_logits = model(sub_batch.detach())
-        return p_logits.detach(), labels.detach()
+            p_logits, z_logits = model.module.forward_1view(sub_batch.detach())
+        return p_logits.detach(), z_logits.detach(), labels.detach()
 
 
     data_iter = iter(data)
@@ -172,12 +169,12 @@ def main(local_rank):
     count = 0
     while True:
 
-        p_logits, labels = forward_backward_log(data_iter)
+        p_logits, z_logits, labels = forward_backward_log(data_iter)
         count += p_logits.shape[0]
 
         # list_reps.append(rep.cpu().numpy())
         list_p_logits.append(p_logits.cpu().numpy())
-
+        list_z_logits.append(z_logits.cpu().numpy())
         list_labels.append(labels.cpu().numpy())
         print(count, flush=True)
         if count >= args.num_samples:
@@ -187,11 +184,13 @@ def main(local_rank):
     p_logits = np.concatenate(list_p_logits, axis=0)
     p_logits = p_logits[:args.num_samples]
 
+    z_logits = np.concatenate(list_z_logits, axis=0)
+    z_logits = z_logits[:args.num_samples]
 
     labels = np.concatenate(list_labels, axis=0)
     labels = labels[:args.num_samples]
 
-    np.savez(output_file, p_logits, labels)
+    np.savez(output_file, p_logits, z_logits, labels)
 
     dist.barrier()
 
