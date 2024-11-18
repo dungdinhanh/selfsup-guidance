@@ -16,4 +16,5 @@ ssguided_diffusion.egg-info
 ss_models/
 output_nci/
 output_nci2/
+runsGLIDECOMPT/
 

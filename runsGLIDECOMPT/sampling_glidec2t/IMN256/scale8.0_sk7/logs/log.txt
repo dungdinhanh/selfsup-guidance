@@ -1,9 +1,0 @@
-Logging to ../selfsup-guidance/runsGLIDECOMPT/sampling_glidec2t/IMN256/scale8.0_sk7/logs
-creating model and diffusion...
-total base parameters 385030726
-loading clip...
-Looking for previous file
-Number of current images: 0
-sampling...
-running time 112.67400574684143
-sampling complete
