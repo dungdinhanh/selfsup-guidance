@@ -112,7 +112,7 @@ def main(local_rank):
             loss = (loss1 + loss2) * 1/2
             classifier.pred_prev = p_x_in.detach()
             classifier.z_prev = z_x_in.detach()
-            return th.autograd.grad(loss, x_in)[0] * args.classifier_scale
+            return -th.autograd.grad(loss, x_in)[0] * args.classifier_scale
 
     def model_fn(x, t, y=None, x0=None):
         assert y is not None

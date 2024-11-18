@@ -129,3 +129,21 @@ eval_models/simsiam_0099.pth.tar
 classify_image_graph_def.pb
 evaluations/classify_image_graph_def.pb
 
+eval_models/psimsiam_negw
+
+reference/VIRTUAL_lsun_bedroom256.npz
+reference/VIRTUAL_lsun_cat256.npz
+reference/VIRTUAL_lsun_horse256.npz
+
+eval_models/imn64
+eval_models/imn64/logs
+eval_models/imn256/
+eval_models/imn256_simsiam/
+eval_models/imn128/
+#eval_models/lsun_bed256
+eval_models/lsun_bed256
+eval_models/imn128_simsiam/
+eval_models/moco_v2_800ep_pretrain.pth.tar
+eval_models/imn128_mocov2/
+eval_models/imn256_mocov2/
+eval_models/imn64_mocov2/

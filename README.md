@@ -1,4 +1,4 @@
-# guided-diffusion
+m# guided-diffusion
 
 This is the codebase for [Diffusion Models Beat GANS on Image Synthesis](http://arxiv.org/abs/2105.05233).
 

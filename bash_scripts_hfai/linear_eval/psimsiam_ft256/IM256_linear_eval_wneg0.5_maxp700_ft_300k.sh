@@ -21,7 +21,7 @@ eval ${cmd}
 cmd="python scripts_gdiff/selfsup/analyse/simsiam/main_lincls_normdiff_pdiff.py\
   -a resnet50 --dist-url 'tcp://localhost:10001' --multiprocessing-distributed \
   --world-size 1 --rank 0  --pretrained runs/selfsup_training_distanceaware_noT/psimsiam300000_IM256_wneg0.5_maxp700/models/model070000.pt  \
-  --lars --image_size 256 --save_folder runs/linear_eval/im256_lin_wneg0.5_maxp700"
+  --lars --image_size 256 --save_folder runs/linear_eval/im256_lin_wl_maxp700"
 #   --world-size 1 --rank 0  --pretrained runs/selfsup_training_distanceaware_noT/psimsiam150000/models/model149999.pt --lars"
 echo ${cmd}
 eval ${cmd}

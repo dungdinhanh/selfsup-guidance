@@ -97,6 +97,41 @@ class CocoCaptionWOthers(CocoCaption):
             annos_others.append(annos_other)
         return list(zip(annos, annos_others))
 
+class CocoCaptionWContrastive(CocoCaption):
+    def __init__(
+            self,
+            split: str,
+            transform: Optional[Callable] = None,
+            check_data: bool = True,
+            miniset: bool = False,
+            data_folder="data"
+    ):
+        self.split = split
+        self.reader = CocoReaderLocal(split, check_data, miniset, data_folder)
+        self._load_annotations()  # load annotations into memory
+        self.transform = transform
+        self.coco = self.reader.coco
+
+
+    def __getitem__(self, indices):
+        n = len(indices)
+        selected = np.random.randint(0, 5, (n,))
+        annos = []
+        annos_others = []
+        for i in range(n):
+            annos_other = []
+            anno_list = self.reader.read_anno(indices[i])
+            len_list_anno = len(anno_list)
+            for j in range(len_list_anno):
+                if j == selected[i]:
+                    annos.append(anno_list[j]['caption'])
+                else:
+                    if len(annos_other) >= 4:
+                        continue
+                    annos_other.append(anno_list[j]['caption'])
+            annos_others.append(annos_other)
+        return list(zip(annos, annos_others))
+
 
 class CocoCaptionWithImages(CocoCaption):
     def __init__(
@@ -192,6 +227,19 @@ def load_data_caption_hfai_robust(
         batch_size: int,
 ):
     dataset = CocoCaptionWOthers(split=split, miniset=False, data_folder=None)
+
+    data_sampler = DistributedSampler(dataset, shuffle=True)
+    loader = dataset.loader(batch_size, num_workers=8, sampler=data_sampler, pin_memory=True, drop_last=True)
+
+    while True:
+        yield from loader  # put all items of loader into list and concat all list infinitely
+
+def load_data_caption_hfai_contrastive(
+        *,
+        split: str,
+        batch_size: int,
+):
+    dataset = CocoCaptionWOthersContrastive(split=split, miniset=False, data_folder=None)
 
     data_sampler = DistributedSampler(dataset, shuffle=True)
     loader = dataset.loader(batch_size, num_workers=8, sampler=data_sampler, pin_memory=True, drop_last=True)

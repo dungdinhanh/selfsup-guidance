@@ -42,8 +42,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--image-size", help="new image size", type=int, default=256)
     parser.add_argument("--prefix", help="class name", type=str, default="bedroom")
-    parser.add_argument("lmdb_path", help="path to an LSUN lmdb database")
-    parser.add_argument("out_dir", help="path to output directory")
+    parser.add_argument("--lmdb_path", help="path to an LSUN lmdb database")
+    parser.add_argument("--out_dir", help="path to output directory")
     args = parser.parse_args()
 
     images = read_images(args.lmdb_path, args.image_size)

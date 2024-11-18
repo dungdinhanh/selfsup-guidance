@@ -21,7 +21,7 @@ cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
-scales=("0.0" "0.1"  "0.5" "0.7")
+scales=("0.1"  "0.5" "0.7")
 maxps=("700" )
 wnegs=("0.5")
 
@@ -35,7 +35,7 @@ do
 for wneg in "${wnegs[@]}"
 do
 cmd="python scripts_gdiff/selfsup/classifier_sample_ss_psimsiam.py $MODEL_FLAGS --classifier_scale ${scale}  \
---classifier_path runs/selfsup_training_distanceaware_noT/psimsiam300000_IM256_wneg${wneg}_maxp${maxp}/models/model150000.pt\
+--classifier_path eval_models/psimsiam_negw/psimsiam_maxp700_negw0p5.pt \
  --model_path models/256x256_diffusion.pt $SAMPLE_FLAGS \
  --logdir runs/sampling_eds_negw/IMN256/conditional/scale${scale}_maxp${maxp}_wneg${wneg}/ "
 echo ${cmd}
