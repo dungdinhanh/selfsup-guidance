@@ -1,5 +1,6 @@
 #!/bin/bash
 
+export NCCL_P2P_DISABLE=1
 
 MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond False --diffusion_steps 1000 \
  --image_size 256 --learn_sigma True --noise_schedule linear --num_channels 256 --num_head_channels 64 \

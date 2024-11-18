@@ -7,16 +7,16 @@ TRAIN_FLAGS="--iterations 300000 --anneal_lr True --batch_size 20 --lr 6e-4 --sa
 
 
 cmd="cd ../../"
-echo ${cmd}
-eval ${cmd}
+# echo ${cmd}
+# eval ${cmd}
 
 cmd="ls"
 echo ${cmd}
 eval ${cmd}
 
 
-cmd="CUDA_VISIBLE_DEVICES=0 python scripts_gdiff/consistency/classifier_gather_rep4_mocov2.py --data_dir path/to/imagenet \
---logdir eval_models/imn512_mocov2 --p_classifier eval_models/moco_v2_800ep_pretrain.pth.tar --image_size 256 \
+cmd="CUDA_VISIBLE_DEVICES=2 python scripts_gdiff/consistency/classifier_gather_rep4_mocov2.py --data_dir path/to/imagenet \
+--logdir eval_models/imn512_mocov2 --p_classifier eval_models/moco_v2_800ep_pretrain.pth.tar --image_size 512 \
  $TRAIN_FLAGS --num_samples 1281167"
 echo ${cmd}
 eval ${cmd}
