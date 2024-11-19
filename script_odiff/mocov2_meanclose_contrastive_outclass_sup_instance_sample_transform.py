@@ -7,9 +7,10 @@ import os
 
 import numpy as np
 import torch as th
-import hfai.nccl.distributed as dist
+# import hfai.nccl.distributed as dist
+import torch.distributed as dist
 import torch.nn.functional as F
-import hfai
+# import hfai
 from PIL import Image
 import time
 import numpy as np
@@ -73,15 +74,16 @@ def main(local_rank):
         np.random.seed(seed)
 
         os.environ['PYTHONHASHSEED'] = str(seed)
-
+    base_folder = args.base_folder
     save_folder = os.path.join(
+        base_folder,
         args.logdir,
         "logs",
     )
 
     logger.configure(save_folder, rank=dist.get_rank())
 
-    output_images_folder = os.path.join(args.logdir, "reference")
+    output_images_folder = os.path.join(base_folder, args.logdir, "reference")
     os.makedirs(output_images_folder, exist_ok=True)
 
     logger.log("creating model and diffusion...")
@@ -89,7 +91,7 @@ def main(local_rank):
         **args_to_dict(args, model_and_diffusion_defaults().keys())
     )
     model.load_state_dict(
-        dist_util.load_state_dict(args.model_path, map_location="cpu")
+        dist_util.load_state_dict(os.path.join(base_folder, args.model_path), map_location="cpu")
     )
     model.to(dist_util.dev())
     if args.use_fp16:
@@ -101,14 +103,14 @@ def main(local_rank):
     if args.classifier_type == 'finetune':
         classifier = create_classifier(**args_to_dict(args, classifier_defaults().keys()))
         classifier.load_state_dict(
-            dist_util.load_state_dict(args.classifier_path, map_location="cpu")
+            dist_util.load_state_dict(os.path.join(base_folder, args.classifier_path), map_location="cpu")
         )
         classifier.to(dist_util.dev())
         if args.classifier_use_fp16:
             classifier.convert_to_fp16()
         classifier.eval()
     elif args.classifier_type=='simsiam':
-        resnet_address = 'eval_models/simsiam_0099.pth.tar'
+        resnet_address = os.path.join(base_folder, 'eval_models/simsiam_0099.pth.tar')
         resnet = create_simsiam_selfsup(**args_to_dict(args, simsiam_defaults().keys()))
         for param in resnet.parameters():
             param.required_grad = False
@@ -117,7 +119,7 @@ def main(local_rank):
         resnet.eval()
         resnet.sampling=True
     elif args.classifier_type=='mocov2':
-        resnet_address = 'eval_models/moco_v2_800ep_pretrain.pth.tar'
+        resnet_address = os.path.join(base_folder, 'eval_models/moco_v2_800ep_pretrain.pth.tar')
         resnet = create_mocov2_selfsup(**args_to_dict(args, simsiam_defaults().keys()))
         for param in resnet.parameters():
             param.required_grad = False
@@ -127,10 +129,10 @@ def main(local_rank):
         resnet.sampling=True
     else:
         if args.classifier_type == 'resnet50':
-            resnet_address = 'eval_models/resnet50-19c8e357.pth'
+            resnet_address = os.path.join(base_folder, 'eval_models/resnet50-19c8e357.pth')
             resnet = models.resnet50()
         elif args.classifier_type == 'resnet101':
-            resnet_address = 'eval_models/resnet101-5d3b4d8f.pth'
+            resnet_address =  os.path.join(base_folder, 'eval_models/resnet101-5d3b4d8f.pth')
             resnet = models.resnet101()
 
 
@@ -169,7 +171,7 @@ def main(local_rank):
     std_imn = [0.229, 0.224, 0.225]
 
     # features loading
-    features_folder = os.path.dirname(args.features)
+    features_folder = os.path.dirname(os.path.join(base_folder, args.features))
     features_mean_sup_file = os.path.join(features_folder, f"reps3_mean_sup_closest{args.k_closest}_set.npz")
     if not os.path.isfile(features_mean_sup_file):
         features_file = np.load(args.features)
@@ -311,12 +313,12 @@ def main(local_rank):
         dist.all_gather(gathered_labels, classes)
         batch_labels = [labels.cpu().numpy() for labels in gathered_labels]
         all_labels.extend(batch_labels)
-        if dist.get_rank() == 0:
-            if hfai.client.receive_suspend_command():
-                print("Receive suspend - good luck next run ^^")
-                hfai.client.go_suspend()
-            logger.log(f"created {len(all_images) * args.batch_size} samples")
-            np.savez(checkpoint, np.stack(all_images), np.stack(all_labels))
+        # if dist.get_rank() == 0:
+        #     if hfai.client.receive_suspend_command():
+        #         print("Receive suspend - good luck next run ^^")
+        #         hfai.client.go_suspend()
+        #     logger.log(f"created {len(all_images) * args.batch_size} samples")
+        #     np.savez(checkpoint, np.stack(all_images), np.stack(all_labels))
 
     arr = np.concatenate(all_images, axis=0)
     arr = arr[: args.num_samples]
@@ -327,7 +329,8 @@ def main(local_rank):
         out_path = os.path.join(output_images_folder, f"samples_{shape_str}.npz")
         logger.log(f"saving to {out_path}")
         np.savez(out_path, arr, label_arr)
-        os.remove(checkpoint)
+        if os.path.isfile(checkpoint):
+            os.remove(checkpoint)
 
     dist.barrier()
     logger.log("sampling complete")
@@ -355,6 +358,7 @@ def create_argparser():
         features="eval_models/imn128_mocov2/reps3.npz",
         save_imgs_for_visualization=False,
         k_closest=5,
+        base_folder="./"
     )
     defaults.update(model_and_diffusion_defaults())
     defaults.update(simsiam_defaults())
@@ -419,4 +423,4 @@ def get_mask(labels_list, selected_indexes):
 
 if __name__ == "__main__":
     ngpus = th.cuda.device_count()
-    hfai.multiprocessing.spawn(main, args=(), nprocs=ngpus, bind_numa=True)
+    th.multiprocessing.spawn(main, args=(), nprocs=ngpus)
