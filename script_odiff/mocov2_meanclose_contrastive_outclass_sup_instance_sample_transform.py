@@ -174,7 +174,7 @@ def main(local_rank):
     features_folder = os.path.dirname(os.path.join(base_folder, args.features))
     features_mean_sup_file = os.path.join(features_folder, f"reps3_mean_sup_closest{args.k_closest}_set.npz")
     if not os.path.isfile(features_mean_sup_file):
-        features_file = np.load(args.features)
+        features_file = np.load(os.path.join(base_folder, args.features))
         # features_n = features_file['arr_0'].shape[0]
         features_p = features_file['arr_0']
         labels_associated = features_file['arr_1']
