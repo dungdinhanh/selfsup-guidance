@@ -1,176 +1,199 @@
-m# guided-diffusion
+# Representative Guidance (RepG)
 
-This is the codebase for [Diffusion Models Beat GANS on Image Synthesis](http://arxiv.org/abs/2105.05233).
+Official code for the ICLR 2025 paper
+**[Representative Guidance: Diffusion Model Sampling with Coherence](https://openreview.net/forum?id=gWgaypDBs8)**.
 
-This repository is based on [openai/improved-diffusion](https://github.com/openai/improved-diffusion), with modifications for classifier conditioning and architecture improvements.
+Representative Guidance (RepG) reformulates diffusion sampling to move along a *coherent* direction
+towards a **representative target** built from **self-supervised representations** (e.g. MoCo v2 / v3,
+SimSiam, BYOL). Unlike classic classifier guidance — whose discriminative features highlight only a
+narrow set of class-specific cues — RepG treats sampling as a downstream task that refines image
+detail and corrects generation errors. It improves vanilla diffusion sampling and, when combined with
+classifier-free guidance, surpasses state-of-the-art benchmarks.
 
-# Download pre-trained models
+This codebase builds on OpenAI's
+[guided-diffusion](https://github.com/openai/guided-diffusion) (ADM) and
+[GLIDE](https://github.com/openai/glide-text2im).
 
-We have released checkpoints for the main models in the paper. Before using these models, please review the corresponding [model card](model-card.md) to understand the intended use and limitations of these models.
+---
 
-Here are the download links for each model checkpoint:
+## Repository layout
 
- * 64x64 classifier: [64x64_classifier.pt](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/64x64_classifier.pt)
- * 64x64 diffusion: [64x64_diffusion.pt](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/64x64_diffusion.pt)
- * 128x128 classifier: [128x128_classifier.pt](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/128x128_classifier.pt)
- * 128x128 diffusion: [128x128_diffusion.pt](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/128x128_diffusion.pt)
- * 256x256 classifier: [256x256_classifier.pt](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_classifier.pt)
- * 256x256 diffusion: [256x256_diffusion.pt](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion.pt)
- * 256x256 diffusion (not class conditional): [256x256_diffusion_uncond.pt](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt)
- * 512x512 classifier: [512x512_classifier.pt](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/512x512_classifier.pt)
- * 512x512 diffusion: [512x512_diffusion.pt](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/512x512_diffusion.pt)
- * 64x64 -&gt; 256x256 upsampler: [64_256_upsampler.pt](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/64_256_upsampler.pt)
- * 128x128 -&gt; 512x512 upsampler: [128_512_upsampler.pt](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/128_512_upsampler.pt)
- * LSUN bedroom: [lsun_bedroom.pt](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/lsun_bedroom.pt)
- * LSUN cat: [lsun_cat.pt](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/lsun_cat.pt)
- * LSUN horse: [lsun_horse.pt](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/lsun_horse.pt)
- * LSUN horse (no dropout): [lsun_horse_nodropout.pt](https://openaipublic.blob.core.windows.net/diffusion/jul-2021/lsun_horse_nodropout.pt)
+| Path | Purpose |
+|------|---------|
+| `off_guided_diffusion/`, `guided_diffusion/`, `improved_diffusion/` | Diffusion model + Gaussian diffusion (ADM/IDDPM). |
+| `glide_text2im/` | GLIDE text-to-image backbone (incl. `CLIPModelRep` representative guidance). |
+| `scripts_gdiff/selfsup/` | Training / fine-tuning of self-supervised guidance classifiers. |
+| `script_odiff/` | **Off-the-shelf** self-supervised guided sampling (main RepG samplers). |
+| `scripts_glide/` | GLIDE sampling with representative guidance. |
+| `evaluations/` | FID / Precision / Recall evaluator. |
+| `eval_models/` | Self-supervised encoder checkpoints + precomputed reference representations. |
+| `models/` | Pretrained ADM / GLIDE diffusion checkpoints. |
+| `reference/` | Reference statistics (`VIRTUAL_imagenet*_labeled.npz`) for evaluation. |
+| `bash_scripts/`, `bash_scripts_hfai/`, `bash_iclr/` | Ready-to-run example scripts for every experiment in the paper. |
 
-# Sampling from pre-trained models
+---
 
-To sample from these models, you can use the `classifier_sample.py`, `image_sample.py`, and `super_res_sample.py` scripts.
-Here, we provide flags for sampling from all of these models.
-We assume that you have downloaded the relevant model checkpoints into a folder called `models/`.
+## 1. Setup
 
-For these examples, we will generate 100 samples with batch size 4. Feel free to change these values.
+```bash
+git clone https://github.com/dungdinhanh/selfsup-guidance.git
+cd selfsup-guidance
 
-```
-SAMPLE_FLAGS="--batch_size 4 --num_samples 100 --timestep_respacing 250"
-```
+# create an environment (Python 3.8–3.10 recommended)
+conda create -n repg python=3.9 -y
+conda activate repg
 
-## Classifier guidance
+# install this package + Python deps
+pip install -e .
+pip install -r requirements.txt
 
-Note for these sampling runs that you can set `--classifier_scale 0` to sample from the base diffusion model.
-You may also use the `image_sample.py` script instead of `classifier_sample.py` in that case.
+# PyTorch (pick the build matching your CUDA); example for CUDA 11.1:
+pip install torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio==0.9.0 \
+    -f https://download.pytorch.org/whl/torch_stable.html
 
- * 64x64 model:
-
-```
-MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond True --diffusion_steps 1000 --dropout 0.1 --image_size 64 --learn_sigma True --noise_schedule cosine --num_channels 192 --num_head_channels 64 --num_res_blocks 3 --resblock_updown True --use_new_attention_order True --use_fp16 True --use_scale_shift_norm True"
-python classifier_sample.py $MODEL_FLAGS --classifier_scale 1.0 --classifier_path models/64x64_classifier.pt --classifier_depth 4 --model_path models/64x64_diffusion.pt $SAMPLE_FLAGS
-```
-
- * 128x128 model:
-
-```
-MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond True --diffusion_steps 1000 --image_size 128 --learn_sigma True --noise_schedule linear --num_channels 256 --num_heads 4 --num_res_blocks 2 --resblock_updown True --use_fp16 True --use_scale_shift_norm True"
-python classifier_sample.py $MODEL_FLAGS --classifier_scale 0.5 --classifier_path models/128x128_classifier.pt --model_path models/128x128_diffusion.pt $SAMPLE_FLAGS
+# TensorFlow + scikit-learn are needed for the FID/precision/recall evaluator
+pip install tensorflow-gpu==2.9.2 scikit-learn
 ```
 
- * 256x256 model:
+Convenience installers used on our clusters are also provided:
+`install_requirements.sh` (local/CUDA 11.1) and `install_requirements_nci2.sh` (NCI/CUDA 10.2).
+
+Multi-GPU runs use `torch.distributed`; set `NCCL_P2P_DISABLE=1` if your nodes lack P2P.
+
+---
+
+## 2. Assets to download
+
+RepG guides a **pretrained diffusion model** with a **pretrained self-supervised encoder** and a set
+of **precomputed reference representations**. Place them as follows:
+
+**a) Diffusion checkpoints → `models/`** (from OpenAI guided-diffusion):
 
 ```
-MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond True --diffusion_steps 1000 --image_size 256 --learn_sigma True --noise_schedule linear --num_channels 256 --num_head_channels 64 --num_res_blocks 2 --resblock_updown True --use_fp16 True --use_scale_shift_norm True"
-python classifier_sample.py $MODEL_FLAGS --classifier_scale 1.0 --classifier_path models/256x256_classifier.pt --model_path models/256x256_diffusion.pt $SAMPLE_FLAGS
+models/256x256_diffusion.pt          # class-conditional ADM, ImageNet 256
+models/64x64_diffusion.pt            # ImageNet 64
+models/128x128_diffusion.pt          # ImageNet 128
+models/512x512_diffusion.pt          # ImageNet 512
 ```
+See the [guided-diffusion model page](https://github.com/openai/guided-diffusion#download-pre-trained-models)
+for links to every checkpoint (64/128/256/512, upsamplers, LSUN).
 
- * 256x256 model (unconditional):
-
-```
-MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond False --diffusion_steps 1000 --image_size 256 --learn_sigma True --noise_schedule linear --num_channels 256 --num_head_channels 64 --num_res_blocks 2 --resblock_updown True --use_fp16 True --use_scale_shift_norm True"
-python classifier_sample.py $MODEL_FLAGS --classifier_scale 10.0 --classifier_path models/256x256_classifier.pt --model_path models/256x256_diffusion_uncond.pt $SAMPLE_FLAGS
-```
-
- * 512x512 model:
+**b) Self-supervised encoders → `eval_models/`** (official releases):
 
 ```
-MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond True --diffusion_steps 1000 --image_size 512 --learn_sigma True --noise_schedule linear --num_channels 256 --num_head_channels 64 --num_res_blocks 2 --resblock_updown True --use_fp16 False --use_scale_shift_norm True"
-python classifier_sample.py $MODEL_FLAGS --classifier_scale 4.0 --classifier_path models/512x512_classifier.pt --model_path models/512x512_diffusion.pt $SAMPLE_FLAGS
+eval_models/moco_v2_800ep_pretrain.pth.tar   # MoCo v2  (facebookresearch/moco)
+eval_models/simsiam_0099.pth.tar             # SimSiam  (facebookresearch/simsiam)
 ```
 
-## Upsampling
+**c) Reference representations → `eval_models/<dataset>_<encoder>/`**
 
-For these runs, we assume you have some base samples in a file `64_samples.npz` or `128_samples.npz` for the two respective models.
-
- * 64 -&gt; 256:
-
-```
-MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond True --diffusion_steps 1000 --large_size 256  --small_size 64 --learn_sigma True --noise_schedule linear --num_channels 192 --num_heads 4 --num_res_blocks 2 --resblock_updown True --use_fp16 True --use_scale_shift_norm True"
-python super_res_sample.py $MODEL_FLAGS --model_path models/64_256_upsampler.pt --base_samples 64_samples.npz $SAMPLE_FLAGS
-```
-
- * 128 -&gt; 512:
+These are self-supervised features of the ImageNet reference set plus the per-class
+*representative* (k-closest) sets that RepG guides towards, e.g.:
 
 ```
-MODEL_FLAGS="--attention_resolutions 32,16 --class_cond True --diffusion_steps 1000 --large_size 512 --small_size 128 --learn_sigma True --noise_schedule linear --num_channels 192 --num_head_channels 64 --num_res_blocks 2 --resblock_updown True --use_fp16 True --use_scale_shift_norm True"
-python super_res_sample.py $MODEL_FLAGS --model_path models/128_512_upsampler.pt $SAMPLE_FLAGS --base_samples 128_samples.npz
+eval_models/imn256_mocov2/reps3.npz                       # reference features
+eval_models/imn256_mocov2/reps3_mean_sup_closest10_set.npz # k=10 representative set
 ```
+The samplers read this via the `--features` flag. Encoder/dataset folders follow the pattern
+`imn{64,128,256,512}_{mocov2,mocov3,simsiam}`.
 
-## LSUN models
-
-These models are class-unconditional and correspond to a single LSUN class. Here, we show how to sample from `lsun_bedroom.pt`, but the other two LSUN checkpoints should work as well:
-
-```
-MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond False --diffusion_steps 1000 --dropout 0.1 --image_size 256 --learn_sigma True --noise_schedule linear --num_channels 256 --num_head_channels 64 --num_res_blocks 2 --resblock_updown True --use_fp16 True --use_scale_shift_norm True"
-python image_sample.py $MODEL_FLAGS --model_path models/lsun_bedroom.pt $SAMPLE_FLAGS
-```
-
-You can sample from `lsun_horse_nodropout.pt` by changing the dropout flag:
+**d) Evaluation stats → `reference/`** (from guided-diffusion evaluations):
 
 ```
-MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond False --diffusion_steps 1000 --dropout 0.0 --image_size 256 --learn_sigma True --noise_schedule linear --num_channels 256 --num_head_channels 64 --num_res_blocks 2 --resblock_updown True --use_fp16 True --use_scale_shift_norm True"
-python image_sample.py $MODEL_FLAGS --model_path models/lsun_horse_nodropout.pt $SAMPLE_FLAGS
+reference/VIRTUAL_imagenet256_labeled.npz
 ```
 
-Note that for these models, the best samples result from using 1000 timesteps:
+---
 
-```
-SAMPLE_FLAGS="--batch_size 4 --num_samples 100 --timestep_respacing 1000"
-```
+## 3. Sampling with Representative Guidance
 
-# Results
+**Off-the-shelf self-supervised guidance** (ImageNet 256, MoCo v2). This is the core RepG sampler:
 
-This table summarizes our ImageNet results for pure guided diffusion models:
+```bash
+MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond True --diffusion_steps 1000 \
+ --image_size 256 --learn_sigma True --noise_schedule linear --num_channels 256 \
+ --num_head_channels 64 --num_res_blocks 2 --resblock_updown True --use_fp16 True \
+ --use_scale_shift_norm True"
 
-| Dataset          | FID  | Precision | Recall |
-|------------------|------|-----------|--------|
-| ImageNet 64x64   | 2.07 | 0.74      | 0.63   |
-| ImageNet 128x128 | 2.97 | 0.78      | 0.59   |
-| ImageNet 256x256 | 4.59 | 0.82      | 0.52   |
-| ImageNet 512x512 | 7.72 | 0.87      | 0.42   |
+SAMPLE_FLAGS="--batch_size 50 --num_samples 50000 --timestep_respacing 250"
 
-This table shows the best results for high resolutions when using upsampling and guidance together:
-
-| Dataset          | FID  | Precision | Recall |
-|------------------|------|-----------|--------|
-| ImageNet 256x256 | 3.94 | 0.83      | 0.53   |
-| ImageNet 512x512 | 3.85 | 0.84      | 0.53   |
-
-Finally, here are the unguided results on individual LSUN classes:
-
-| Dataset      | FID  | Precision | Recall |
-|--------------|------|-----------|--------|
-| LSUN Bedroom | 1.90 | 0.66      | 0.51   |
-| LSUN Cat     | 5.57 | 0.63      | 0.52   |
-| LSUN Horse   | 2.57 | 0.71      | 0.55   |
-
-# Training models
-
-Training diffusion models is described in the [parent repository](https://github.com/openai/improved-diffusion). Training a classifier is similar. We assume you have put training hyperparameters into a `TRAIN_FLAGS` variable, and classifier hyperparameters into a `CLASSIFIER_FLAGS` variable. Then you can run:
-
-```
-mpiexec -n N python scripts/classifier_train.py --data_dir path/to/imagenet $TRAIN_FLAGS $CLASSIFIER_FLAGS
+python script_odiff/mocov2_meanclose_sup_sample_transform.py $MODEL_FLAGS $SAMPLE_FLAGS \
+  --model_path models/256x256_diffusion.pt \
+  --classifier_type mocov2 \
+  --classifier_scale 18.0 \
+  --joint_temperature 0.5 \
+  --k_closest 10 \
+  --features eval_models/imn256_mocov2/reps3.npz \
+  --logdir runs/repg_imn256_mocov2
 ```
 
-Make sure to divide the batch size in `TRAIN_FLAGS` by the number of MPI processes you are using.
+Key RepG flags:
 
-Here are flags for training the 128x128 classifier. You can modify these for training classifiers at other resolutions:
+| Flag | Meaning |
+|------|---------|
+| `--classifier_type` | Self-supervised encoder: `mocov2`, `mocov3`, `simsiam`, or `resnet50/101`. |
+| `--classifier_scale` | Guidance strength. |
+| `--features` | Precomputed reference representations (`reps*.npz`). |
+| `--k_closest` | Size of the representative (k-closest) target set. |
+| `--joint_temperature`, `--margin_temperature_discount`, `--gamma_factor` | Temperature / margin controls for the representative target. |
+| `--timestep_respacing` | Sampling steps (`250`, or `ddim25` with `--use_ddim True`). |
 
-```sh
-TRAIN_FLAGS="--iterations 300000 --anneal_lr True --batch_size 256 --lr 3e-4 --save_interval 10000 --weight_decay 0.05"
-CLASSIFIER_FLAGS="--image_size 128 --classifier_attention_resolutions 32,16,8 --classifier_depth 2 --classifier_width 128 --classifier_pool attention --classifier_resblock_updown True --classifier_use_scale_shift_norm True"
+**Combined with classifier-free guidance** — see
+`bash_scripts/sample_offtheshelf_clsfree/` (e.g. `im256_contrastive/im256_clsfree_contrastive2.sh`).
+
+**GLIDE text-to-image** representative guidance — see `scripts_glide/` and `bash_scripts/sample_offtheshelf_glide/`.
+
+The `bash_scripts/`, `bash_scripts_hfai/` and `bash_iclr/` folders contain the exact commands and
+hyperparameters for every configuration reported in the paper — they are the recommended starting point.
+
+---
+
+## 4. Evaluation (FID / Precision / Recall)
+
+```bash
+python evaluations/evaluator_tolog.py \
+  reference/VIRTUAL_imagenet256_labeled.npz \
+  runs/repg_imn256_mocov2/reference/samples_50000x256x256x3.npz
 ```
 
-For sampling from a 128x128 classifier-guided model, 25 step DDIM:
+---
 
-```sh
-MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond True --image_size 128 --learn_sigma True --num_channels 256 --num_heads 4 --num_res_blocks 2 --resblock_updown True --use_fp16 True --use_scale_shift_norm True"
-CLASSIFIER_FLAGS="--image_size 128 --classifier_attention_resolutions 32,16,8 --classifier_depth 2 --classifier_width 128 --classifier_pool attention --classifier_resblock_updown True --classifier_use_scale_shift_norm True --classifier_scale 1.0 --classifier_use_fp16 True"
-SAMPLE_FLAGS="--batch_size 4 --num_samples 50000 --timestep_respacing ddim25 --use_ddim True"
-mpiexec -n N python scripts/classifier_free_sample.py \
-    --model_path /path/to/model.pt \
-    --classifier_path path/to/classifier.pt \
-    $MODEL_FLAGS $CLASSIFIER_FLAGS $SAMPLE_FLAGS
+## 5. Training self-supervised guidance classifiers (optional)
+
+To fine-tune a distance-aware self-supervised classifier for guidance (instead of using an
+off-the-shelf encoder):
+
+```bash
+TRAIN_FLAGS="--iterations 300000 --anneal_lr True --batch_size 64 --lr 6e-4 \
+ --save_interval 10000 --weight_decay 0.2 --pretrained_cls simsiam"
+CLASSIFIER_FLAGS="--image_size 256 --dim 2048 --pred_dim 512"
+
+python scripts_gdiff/selfsup/classifier_train_selfsup_simsiam_samplercontrol_negative_ft.py \
+  --data_dir /path/to/imagenet \
+  --logdir runs/selfsup_training/psimsiam300k_IM256 \
+  $TRAIN_FLAGS $CLASSIFIER_FLAGS
 ```
 
-To sample for 250 timesteps without DDIM, replace `--timestep_respacing ddim25` to `--timestep_respacing 250`, and replace `--use_ddim True` with `--use_ddim False`.
+See `bash_scripts/train_sscls/` and `bash_scripts/train_sscls_pretrained/` for full examples.
+
+---
+
+## Citation
+
+```bibtex
+@inproceedings{repg2025,
+  title     = {Representative Guidance: Diffusion Model Sampling with Coherence},
+  author    = {Dinh, Anh-Dung and others},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2025},
+  url       = {https://openreview.net/forum?id=gWgaypDBs8}
+}
+```
+<!-- Please confirm the author list matches the camera-ready version. -->
+
+## Acknowledgements
+
+Built on [openai/guided-diffusion](https://github.com/openai/guided-diffusion),
+[openai/improved-diffusion](https://github.com/openai/improved-diffusion),
+[openai/glide-text2im](https://github.com/openai/glide-text2im), and the self-supervised encoders from
+[MoCo](https://github.com/facebookresearch/moco) and [SimSiam](https://github.com/facebookresearch/simsiam).
