@@ -259,6 +259,7 @@ def main(local_rank):
     else:
         img_channels = 3
         num_class = NUM_CLASSES
+    start=time.time()
     while len(all_images) * args.batch_size < args.num_samples:
         model_kwargs = {}
         n = args.batch_size
@@ -291,18 +292,9 @@ def main(local_rank):
             cond_fn=design_cond_fn,
             device=dist_util.dev(),
         )
-
-        if args.save_imgs_for_visualization and dist.get_rank() == 0 and (
-                len(all_images) // dist.get_world_size()) < 10:
-            save_img_dir = vis_images_folder
-            utils.save_image(
-                sample.clamp(-1, 1),
-                os.path.join(save_img_dir, "samples_{}.png".format(len(all_images))),
-                nrow=4,
-                normalize=True,
-                range=(-1, 1),
-            )
-
+        end = time.time()
+        duration = end - start
+        print(duration)
 
         sample = ((sample + 1) * 127.5).clamp(0, 255).to(th.uint8)
         sample = sample.permute(0, 2, 3, 1)
@@ -323,17 +315,17 @@ def main(local_rank):
             logger.log(f"created {len(all_images) * args.batch_size} samples")
             np.savez(checkpoint, np.stack(all_images), np.stack(all_labels))
 
-    arr = np.concatenate(all_images, axis=0)
-    arr = arr[: args.num_samples]
-    label_arr = np.concatenate(all_labels, axis=0)
-    label_arr = label_arr[: args.num_samples]
-    if dist.get_rank() == 0:
-        shape_str = "x".join([str(x) for x in arr.shape])
-        out_path = os.path.join(output_images_folder, f"samples_{shape_str}.npz")
-        logger.log(f"saving to {out_path}")
-        np.savez(out_path, arr, label_arr)
-        if os.path.isfile(checkpoint):
-            os.remove(checkpoint)
+    # arr = np.concatenate(all_images, axis=0)
+    # arr = arr[: args.num_samples]
+    # label_arr = np.concatenate(all_labels, axis=0)
+    # label_arr = label_arr[: args.num_samples]
+    # if dist.get_rank() == 0:
+    #     shape_str = "x".join([str(x) for x in arr.shape])
+    #     out_path = os.path.join(output_images_folder, f"samples_{shape_str}.npz")
+    #     logger.log(f"saving to {out_path}")
+    #     np.savez(out_path, arr, label_arr)
+    #     if os.path.isfile(checkpoint):
+    #         os.remove(checkpoint)
 
     dist.barrier()
     logger.log("sampling complete")
